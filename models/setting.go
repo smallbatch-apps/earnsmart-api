@@ -14,10 +14,10 @@ const (
 
 type Setting struct {
 	CustomModel
-	Name   string
+	Name   string `gorm:"uniqueIndex:idx_user_name"`
 	Type   SettingType
 	Value  string
-	UserID uint `json:"user_id" gorm:"index"`
+	UserID uint `json:"user_id" gorm:"index;uniqueIndex:idx_user_name"`
 	User   User
 }
 

@@ -1,9 +1,11 @@
 package controllers
 
 import (
-	"fmt"
+	"encoding/json"
 	"net/http"
+	"strconv"
 
+	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
 )
 
@@ -16,9 +18,36 @@ func NewFundController(service *services.FundService) *FundController {
 }
 
 func (c *FundController) ListFunds(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "listing all funds\n")
+	funds, err := c.service.ListFunds()
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	response := schema.FundsResponse{Status: "success", Funds: funds}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (c *FundController) GetFund(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "get a transactions\n")
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	fund, err := c.service.GetFund(uint(id))
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := schema.FundResponse{Status: "success", Fund: fund}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
 }

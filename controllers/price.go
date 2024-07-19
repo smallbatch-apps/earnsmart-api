@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/smallbatch-apps/earnsmart-api/errs"
+	"github.com/smallbatch-apps/earnsmart-api/models"
 	"github.com/smallbatch-apps/earnsmart-api/services"
 )
 
@@ -16,15 +18,14 @@ func NewPriceController(service *services.PriceService) *PriceController {
 }
 
 func (c *PriceController) ListPrices(w http.ResponseWriter, r *http.Request) {
-	prices, err := c.service.GetLatestPrices()
+	var prices []models.Price
+	var err error
 
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if prices, err = c.service.GetPrices(); err != nil {
+		errs.InternalError(w, err.Error(), err.Error())
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(prices); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		errs.InternalError(w, "Encoding error in JSON response", err.Error())
 	}
 }

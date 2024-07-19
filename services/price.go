@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
 
 	"github.com/smallbatch-apps/earnsmart-api/models"
 
+	tb "github.com/tigerbeetle/tigerbeetle-go"
+	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 	"gorm.io/gorm"
 )
 
@@ -17,9 +20,9 @@ type PriceService struct {
 	*BaseService
 }
 
-func NewPriceService(db *gorm.DB) *PriceService {
+func NewPriceService(db *gorm.DB, tbClient tb.Client) *PriceService {
 	return &PriceService{
-		BaseService: NewBaseService(db),
+		BaseService: NewBaseService(db, tbClient),
 	}
 }
 
@@ -30,6 +33,16 @@ func (s *PriceService) GetPrices() ([]models.Price, error) {
 		return nil, err
 	}
 	return prices, nil
+}
+
+func (s *PriceService) GetPriceForCurrency(currency string) (models.Price, error) {
+	var price models.Price
+	query := models.Price{Currency: currency, IsCurrent: true}
+	err := s.db.Where(query).Order("currency DESC").First(&price).Error
+	if err != nil {
+		return models.Price{}, err
+	}
+	return price, nil
 }
 
 func (s *PriceService) GetPricesForPeriod(currency string, period uint) ([]models.Price, error) {
@@ -107,4 +120,23 @@ func (s *PriceService) UpdatePrices() error {
 // InsertPricesBatch inserts multiple price records in one batch.
 func (s *PriceService) InsertPricesBatch(prices []models.Price) error {
 	return s.db.Create(&prices).Error
+}
+
+func (s *PriceService) GetAmountPrice(currency string, amount tbt.Uint128) (float64, error) {
+	var price models.Price
+	if err := s.db.Where("currency = ?", currency).First(&price).Error; err != nil {
+		return 0, err
+	}
+
+	decimals := uint64(models.AllCurrencies[currency].Decimals)
+
+	decimalsBigInt := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+	amountBigInt := amount.BigInt()
+	shiftedAmount := new(big.Float).Quo(new(big.Float).SetInt(&amountBigInt), new(big.Float).SetInt(decimalsBigInt))
+
+	shiftedAmountFloat, _ := shiftedAmount.Float64()
+
+	amountUSD := float64(price.Rate) * shiftedAmountFloat
+
+	return amountUSD, nil
 }

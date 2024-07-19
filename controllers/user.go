@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/smallbatch-apps/earnsmart-api/models"
+	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
 )
 
@@ -25,7 +27,30 @@ func NewUserController(service *services.UserService) *UserController {
 }
 
 func (c *UserController) AddUser(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "adding a user\n")
+	var payload schema.NewUserPayload
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var user = models.User{
+		Email:    payload.Email,
+		Password: payload.Password,
+		Name:     payload.Name,
+	}
+	err := c.service.CreateUser(user)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	response := schema.NewUserResponse{User: user, Status: "ok"}
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
 }
 
 func (c *UserController) GetUser(w http.ResponseWriter, r *http.Request) {

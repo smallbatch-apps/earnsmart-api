@@ -9,10 +9,10 @@ type contextKey string
 
 const userIDKey contextKey = "userID"
 
-func GetUserIDFromContext(ctx context.Context) (string, error) {
-	userID, ok := ctx.Value(userIDKey).(string)
+func GetUserIDFromContext(ctx context.Context) (uint, error) {
+	userID, ok := ctx.Value(userIDKey).(uint)
 	if !ok {
-		return "", errors.New("user ID not found in context")
+		return 0, errors.New("user ID not found in context")
 	}
 	return userID, nil
 }

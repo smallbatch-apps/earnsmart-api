@@ -9,10 +9,10 @@ import (
 )
 
 type AdminController struct {
-	service *services.FundService
+	service *services.AdminService
 }
 
-func NewAdminController(service *services.FundService) *AdminController {
+func NewAdminController(service *services.AdminService) *AdminController {
 	return &AdminController{service: service}
 }
 
@@ -22,7 +22,7 @@ func (c *AdminController) SeedData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid admin password", http.StatusUnauthorized)
 		return
 	}
-
-	c.service.db.AutoMigrate(&models.Price{}, &models.Fund{}, &models.Setting{}, &models.User{})
-
+	serviceDb := c.service.GetDB()
+	serviceDb.AutoMigrate(&models.Account{}, &models.Fund{}, &models.Price{}, &models.Setting{}, &models.User{})
+	c.service.SeedData()
 }

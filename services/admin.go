@@ -5,15 +5,18 @@ import (
 
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	"gorm.io/gorm"
+
+	tb "github.com/tigerbeetle/tigerbeetle-go"
+	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 )
 
 type AdminService struct {
 	*BaseService
 }
 
-func NewAdminService(db *gorm.DB) *AdminService {
+func NewAdminService(db *gorm.DB, tbClient tb.Client) *AdminService {
 	return &AdminService{
-		BaseService: NewBaseService(db),
+		BaseService: NewBaseService(db, tbClient),
 	}
 }
 
@@ -21,7 +24,9 @@ func (s *AdminService) SeedData() error {
 
 	s.db.AutoMigrate(&models.Price{}, &models.Fund{}, &models.Setting{}, &models.User{})
 
-	price_service := NewPriceService(s.db)
+	price_service := NewPriceService(s.db, s.tbClient)
+	account_service := NewAccountService(s.db, s.tbClient)
+	transaction_service := NewTransactionService(s.db, s.tbClient)
 
 	// populate prices
 	price_service.UpdatePrices()
@@ -43,24 +48,25 @@ func (s *AdminService) SeedData() error {
 		Email:    "test@earnsmart.com",
 		Password: "123456",
 	}
+
 	err = s.db.Create(test_user).Error
 	if err != nil {
 		return err
 	}
 
-	funds := []models.Fund{
-		{Name: "Bitcoin Immediate Return", Currency: "BTC", Period: uint(models.FundPeriodImmediate), Rate: 0.04},
-		{Name: "Bitcoin Short Term", Currency: "BTC", Period: uint(models.FundPeriodMonth), Rate: 0.06},
-		{Name: "Bitcoin Medium - 3 months", Currency: "BTC", Period: uint(models.FundPeriod3Months), Rate: 0.07},
-		{Name: "Bitcoin Medium - 6 months", Currency: "BTC", Period: uint(models.FundPeriod6Months), Rate: 0.08},
-		{Name: "Bitcoin ", Currency: "BTC", Period: uint(models.FundPeriodYear), Rate: 0.095},
-
-		{Currency: "ETH", Period: uint(models.FundPeriodImmediate), Rate: 0.04},
-		{Currency: "ETH", Period: uint(models.FundPeriodMonth), Rate: 0.06},
-		{Currency: "ETH", Period: uint(models.FundPeriod3Months), Rate: 0.07},
-		{Currency: "ETH", Period: uint(models.FundPeriod6Months), Rate: 0.08},
-		{Currency: "ETH", Period: uint(models.FundPeriod6Months), Rate: 0.095},
+	test_account_id, err := account_service.CreateWalletAccount(test_user.ID, "ETH")
+	if err != nil {
+		return err
 	}
+	transaction_service.CreateDeposit(test_account_id, tbt.ToUint128(2997924580000000000), "ETH")
+
+	test_account_id, err = account_service.CreateWalletAccount(test_user.ID, "USDT")
+	if err != nil {
+		return err
+	}
+	transaction_service.CreateDeposit(test_account_id, tbt.ToUint128(2997924580000000000), "USDT")
+
+	s.db.Create(&models.AllFunds)
 
 	return nil
 }

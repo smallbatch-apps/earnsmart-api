@@ -2,15 +2,26 @@ package services
 
 import (
 	"gorm.io/gorm"
+
+	tb "github.com/tigerbeetle/tigerbeetle-go"
 )
 
 // BaseService provides common CRUD operations
 type BaseService struct {
-	db *gorm.DB
+	db       *gorm.DB
+	tbClient tb.Client
 }
 
-func NewBaseService(db *gorm.DB) *BaseService {
-	return &BaseService{db: db}
+func NewBaseService(db *gorm.DB, tbClient tb.Client) *BaseService {
+	return &BaseService{db: db, tbClient: tbClient}
+}
+
+func (s *BaseService) GetDB() *gorm.DB {
+	return s.db
+}
+
+func (s *BaseService) GetTBClient() tb.Client {
+	return s.tbClient
 }
 
 // // Get retrieves an entity by ID

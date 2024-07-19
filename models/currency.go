@@ -27,6 +27,26 @@ var AllCurrencies = map[string]LocalCurrency{
 	"XRP":   {Name: "Ripple", Symbol: "XRP", Decimals: 18, LedgerID: 17},
 }
 
+var LedgerCurrency = map[uint32]string{
+	1:  "ADA",
+	2:  "AVAX",
+	3:  "BAT",
+	4:  "BNB",
+	5:  "BTC",
+	6:  "DAI",
+	7:  "DOT",
+	8:  "ETH",
+	9:  "HBAR",
+	10: "LINK",
+	11: "MATIC",
+	12: "SOL",
+	13: "TRX",
+	14: "UNI",
+	15: "USDT",
+	16: "USDC",
+	17: "XRP",
+}
+
 // type Currency struct {
 // 	CustomModel
 // 	Name     string

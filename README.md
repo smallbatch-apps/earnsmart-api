@@ -24,15 +24,15 @@ This list will be updated as features are added.
 - [x] Model creation and database structure
 - [x] Database migration
 - [x] Fund routing
-- [ ] Fund service functionality
-- [ ] Account generation and searching
-- [ ] Transfer/transaction model implementation
-- [ ] Worker to update prices
+- [x] Fund service functionality
+- [x] Account generation and searching
+- [x] Transfer/transaction model implementation
+- [x] Worker to update prices
 - [ ] Worker to handle payouts on investments
 - [ ] Worker to handle matured divestment
-- [ ] User registration
-- [ ] Initial database seeding
+- [x] User registration
+- [x] Initial database seeding
 - [ ] User account management
-- [ ] User investment and divestment routes
-- [ ] RFQ routing and functionality
+- [x] User investment and divestment routes
+- [x] RFQ routing and functionality
 - [ ] Swap routing and functionality

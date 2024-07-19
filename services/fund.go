@@ -3,6 +3,7 @@ package services
 import (
 	"github.com/smallbatch-apps/earnsmart-api/models"
 
+	tb "github.com/tigerbeetle/tigerbeetle-go"
 	"gorm.io/gorm"
 )
 
@@ -10,18 +11,18 @@ type FundService struct {
 	*BaseService
 }
 
-func NewFundService(db *gorm.DB) *FundService {
+func NewFundService(db *gorm.DB, tbClient tb.Client) *FundService {
 	return &FundService{
-		BaseService: NewBaseService(db),
+		BaseService: NewBaseService(db, tbClient),
 	}
 }
 
-func (s *FundService) GetFund(id string) (*models.Fund, error) {
+func (s *FundService) GetFund(id uint) (models.Fund, error) {
 	fund := models.Fund{}
 	if err := s.db.Where("id = ?", id).First(&fund).Error; err != nil {
-		return nil, err
+		return fund, err
 	}
-	return &fund, nil
+	return fund, nil
 }
 
 func (s *FundService) ListFunds() ([]models.Fund, error) {

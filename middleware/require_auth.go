@@ -48,7 +48,7 @@ func RequireAuth(next http.Handler) http.Handler {
 
 		log.Println(claims)
 
-		user_id, ok := claims["user_id"].(string)
+		user_id, ok := claims["user_id"].(uint)
 
 		if !ok {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)

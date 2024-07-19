@@ -12,19 +12,26 @@ import (
 
 func main() {
 	database.Connect()
+	tbClient, err := database.CreateTigerBeetleClient()
 
-	priceService := services.NewPriceService(database.DB)
-	fundService := services.NewFundService(database.DB)
-	transactionService := services.NewTransactionService(database.DB)
-	settingService := services.NewSettingService(database.DB)
-	userService := services.NewUserService(database.DB)
+	if err != nil {
+		panic(err)
+	}
+
+	priceService := services.NewPriceService(database.DB, tbClient)
+	fundService := services.NewFundService(database.DB, tbClient)
+	transactionService := services.NewTransactionService(database.DB, tbClient)
+	settingService := services.NewSettingService(database.DB, tbClient)
+	userService := services.NewUserService(database.DB, tbClient)
+	adminService := services.NewAdminService(database.DB, tbClient)
+	// accountService := services.NewAccountService(database.DB, &tbClient)
 
 	priceController := controllers.NewPriceController(priceService)
 	fundController := controllers.NewFundController(fundService)
 	transactionController := controllers.NewTransactionController(transactionService)
 	settingController := controllers.NewSettingController(settingService)
 	userController := controllers.NewUserController(userService)
-	adminController := controllers.NewAdminController(fundService)
+	adminController := controllers.NewAdminController(adminService)
 
 	authedStack := middleware.CreateStack(
 		middleware.LogRequest,
