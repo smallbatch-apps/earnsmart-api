@@ -1,6 +1,7 @@
 package database
 
 import (
+	"log"
 	"os"
 
 	tb "github.com/tigerbeetle/tigerbeetle-go"
@@ -14,7 +15,10 @@ func CreateTigerBeetleClient() (tb.Client, error) {
 	}
 	client, err := tb.NewClient(tbt.ToUint128(0), []string{tbAddress}, 256)
 	if err != nil {
+		log.Println("Failed to create TigerBeetle client! \n", err.Error())
 		return nil, err
+	} else {
+		log.Println("Connected to TigerBeetle successfully")
 	}
 	return client, nil
 }

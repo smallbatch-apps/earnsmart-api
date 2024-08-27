@@ -1,6 +1,8 @@
 package services
 
 import (
+	"fmt"
+
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
 	"gorm.io/gorm"
@@ -26,6 +28,7 @@ func (s *SettingService) GetAll(userID uint) ([]models.Setting, error) {
 }
 
 func (s *SettingService) SetSetting(userID uint, setting string, value string) error {
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("update setting %s to %s", setting, value), userID)
 	return s.db.Exec("INSERT INTO settings (user_id, setting, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = ?", setting, value, value).Error
 }
 

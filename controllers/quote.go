@@ -15,8 +15,8 @@ type QuoteController struct {
 	service *services.PriceService
 }
 
-func NewQuoteController(service *services.PriceService) *PriceController {
-	return &PriceController{service: service}
+func NewQuoteController(service *services.PriceService) *QuoteController {
+	return &QuoteController{service: service}
 }
 
 func (c *QuoteController) GetQuote(w http.ResponseWriter, r *http.Request) {

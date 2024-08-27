@@ -58,7 +58,7 @@ func (s *PriceService) RequestForQuote(fromCurrency string, toCurrency string, a
 
 func (s *PriceService) UpdatePrices() error {
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", os.Getenv("CMC_HOST")+"/v1/cryptocurrency/listings/latest", nil)
+	req, err := http.NewRequest("GET", os.Getenv("COINMARKETCAP_HOST")+"/v1/cryptocurrency/quotes/latest", nil)
 	if err != nil {
 		log.Print(err)
 	}
@@ -67,25 +67,63 @@ func (s *PriceService) UpdatePrices() error {
 	q.Add("symbol", "ETH,BTC,USDT,USDC,DAI,BNB,MATIC,AVAX,SOL,BAT,LINK,UNI,XRP,ADA,HBAR,DOT,TRX")
 
 	req.Header.Set("Accepts", "application/json")
+
 	req.Header.Add("X-CMC_PRO_API_KEY", os.Getenv("COINMARKETCAP_API_KEY"))
 	req.URL.RawQuery = q.Encode()
 	resp, err := client.Do(req)
 	if err != nil {
-		os.Exit(1)
+		log.Println(err.Error())
+		log.Println("Error in Coin Market Cap API key", os.Getenv("COINMARKETCAP_API_KEY"))
+		return err
+		//os.Exit(1)
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var data map[string]interface{}
-	json.Unmarshal([]byte(respBody), &data)
-
+	var response map[string]interface{}
+	json.Unmarshal([]byte(respBody), &response)
+	dataField, ok := response["data"].(map[string]interface{})
+	if !ok {
+		log.Fatalf("Error: 'data' field is missing or not an array")
+	}
 	var prices []models.Price
 
-	for _, value := range data {
-		currencyData := value.(map[string]interface{})
-		symbol := currencyData["symbol"].(string)
-		quoteData := currencyData["quote"].(map[string]interface{})
-		usdData := quoteData["USD"].(map[string]interface{})
-		price := usdData["price"].(float64)
+	for _, value := range dataField {
+
+		currencyData, ok := value.(map[string]interface{})
+		if !ok {
+			log.Println("Invalid currency data format")
+			continue
+		}
+
+		currencyDataJson, _ := json.MarshalIndent(currencyData, "", "  ")
+
+		symbol, ok := currencyData["symbol"].(string)
+		if !ok {
+			log.Println("Missing or invalid 'symbol' field", symbol)
+			log.Printf("currencyData: %+v\n\n", string(currencyDataJson))
+			continue
+		}
+
+		quoteData, ok := currencyData["quote"].(map[string]interface{})
+		if !ok {
+			log.Println("Missing or invalid 'quote' field")
+			log.Printf("currencyData: %+v\n\n", string(currencyDataJson))
+			continue
+		}
+
+		usdData, ok := quoteData["USD"].(map[string]interface{})
+		if !ok {
+			log.Println("Missing or invalid 'USD' field")
+			log.Printf("currencyData: %+v\n\n", string(currencyDataJson))
+			continue
+		}
+
+		price, ok := usdData["price"].(float64)
+		if !ok {
+			log.Println("Missing or invalid 'price' field")
+			log.Printf("currencyData: %+v\n\n", string(currencyDataJson))
+			continue
+		}
 
 		prices = append(prices, models.Price{
 			Currency:  symbol,

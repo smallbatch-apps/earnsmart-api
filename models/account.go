@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"errors"
+	"math/big"
 
 	"github.com/google/uuid"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
@@ -32,24 +33,21 @@ const (
 
 type Account struct {
 	CustomModel
-	AccountID   uuid.UUID `gorm:"type:uuid;primary_key"`
-	UserID      uint      `gorm:"type:uuid"`
-	Currency    string
-	AccountCode AccountCode `gorm:"type:int"`
+	UserID      uint        `json:"user_id" gorm:"type:uuid"`
+	Currency    string      `json:"currency"`
+	AccountCode AccountCode `json:"account_code" gorm:"type:int"`
 }
 
 func (account Account) MarshalJSON() ([]byte, error) {
 	type Alias Account
 
 	return json.Marshal(&struct {
-		ID          uint      `json:"id"`
-		AccountID   uuid.UUID `json:"account_id"`
-		Currency    string    `json:"currency"`
-		AccountCode uint      `json:"account_code"`
+		ID          uint   `json:"id"`
+		Currency    string `json:"currency"`
+		AccountCode uint   `json:"account_code"`
 		Alias
 	}{
 		ID:          account.ID,
-		AccountID:   account.AccountID,
 		Currency:    account.Currency,
 		AccountCode: uint(account.AccountCode),
 		Alias:       (Alias)(account),
@@ -78,7 +76,8 @@ func CurrencyFromInt(value int) (CurrencyOption, error) {
 type AccountCode uint64
 
 const (
-	AccountCodeWallet AccountCode = iota
+	_ AccountCode = iota
+	AccountCodeWallet
 	AccountCodeFundImmediate
 	AccountCodeFundMonth
 	AccountCodeFund3Months
@@ -103,4 +102,71 @@ func ConvertUint128ToUUID(u128 tbt.Uint128) uuid.UUID {
 	var id uuid.UUID
 	copy(id[:], u128[:]) // Copy the Uint128 bytes into the UUID array
 	return id
+}
+
+type AccountWrapper struct {
+	tbt.Account
+}
+
+func (a AccountWrapper) MarshalJSON() ([]byte, error) {
+	type Alias tbt.Account
+	return json.Marshal(&struct {
+		ID             uint64
+		DebitsPending  uint64
+		DebitsPosted   uint64
+		CreditsPending uint64
+		CreditsPosted  uint64
+		UserData128    uint64
+		*Alias
+	}{
+		ID:             BigIntToUint64(a.ID.BigInt()),
+		DebitsPending:  BigIntToUint64(a.DebitsPending.BigInt()),
+		DebitsPosted:   BigIntToUint64(a.DebitsPosted.BigInt()),
+		CreditsPending: BigIntToUint64(a.CreditsPending.BigInt()),
+		CreditsPosted:  BigIntToUint64(a.CreditsPosted.BigInt()),
+		UserData128:    BigIntToUint64(a.UserData128.BigInt()),
+		Alias:          (*Alias)(&a.Account),
+	})
+}
+
+func BigIntToUint64(bi big.Int) uint64 {
+	return bi.Uint64()
+}
+
+type AccountFilterWrapper struct {
+	tbt.AccountFilter
+}
+
+func (a AccountFilterWrapper) MarshalJSON() ([]byte, error) {
+	type Alias tbt.AccountFilter
+	return json.Marshal(&struct {
+		AccountID uint64
+		Reserved  uint64 `json:"-"`
+		*Alias
+	}{
+		AccountID: BigIntToUint64(a.AccountID.BigInt()),
+		Alias:     (*Alias)(&a.AccountFilter),
+	})
+}
+
+type AccountBalanceWrapper struct {
+	tbt.AccountBalance
+}
+
+func (a AccountBalanceWrapper) MarshalJSON() ([]byte, error) {
+	type Alias tbt.AccountBalance
+	return json.Marshal(&struct {
+		DebitsPending  uint64
+		DebitsPosted   uint64
+		CreditsPending uint64
+		CreditsPosted  uint64
+		Reserved       uint64 `json:"-"`
+		*Alias
+	}{
+		DebitsPending:  BigIntToUint64(a.DebitsPending.BigInt()),
+		DebitsPosted:   BigIntToUint64(a.DebitsPosted.BigInt()),
+		CreditsPending: BigIntToUint64(a.CreditsPending.BigInt()),
+		CreditsPosted:  BigIntToUint64(a.CreditsPosted.BigInt()),
+		Alias:          (*Alias)(&a.AccountBalance),
+	})
 }

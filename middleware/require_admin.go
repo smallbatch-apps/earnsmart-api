@@ -7,8 +7,8 @@ import (
 
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		admin_password := r.URL.Query().Get("admin_password")
-		if admin_password != os.Getenv("ADMIN_PASSWORD") {
+		adminPassword := r.URL.Query().Get("admin_password")
+		if adminPassword != os.Getenv("ADMIN_PASSWORD") {
 			http.Error(w, "Invalid admin password", http.StatusUnauthorized)
 			return
 		}

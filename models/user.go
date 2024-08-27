@@ -10,8 +10,8 @@ import (
 
 type User struct {
 	CustomModel
-	Name     string
-	Email    string `gorm:"index:idx_email_unique,unique"`
+	Name     string `json:"name"`
+	Email    string `gorm:"index:idx_email_unique,unique" json:"email"`
 	Password string `json:"-"`
 }
 

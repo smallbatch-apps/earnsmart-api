@@ -1,10 +1,10 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
 	"os"
 
-	"github.com/smallbatch-apps/earnsmart-api/models"
 	"github.com/smallbatch-apps/earnsmart-api/services"
 )
 
@@ -17,12 +17,19 @@ func NewAdminController(service *services.AdminService) *AdminController {
 }
 
 func (c *AdminController) SeedData(w http.ResponseWriter, r *http.Request) {
-	admin_password := r.URL.Query().Get("admin_password")
-	if admin_password != os.Getenv("ADMIN_PASSWORD") {
+	adminPassword := r.URL.Query().Get("admin_password")
+
+	if adminPassword != os.Getenv("ADMIN_PASSWORD") {
 		http.Error(w, "Invalid admin password", http.StatusUnauthorized)
 		return
 	}
-	serviceDb := c.service.GetDB()
-	serviceDb.AutoMigrate(&models.Account{}, &models.Fund{}, &models.Price{}, &models.Setting{}, &models.User{})
-	c.service.SeedData()
+
+	if c.service.SafeToMigrate() {
+		log.Println("Database is in a safe state to migrate")
+		c.service.SeedData()
+		log.Println("Migration and data seeding complete")
+	} else {
+		log.Println("Database is not in a safe state to migrate")
+		return
+	}
 }

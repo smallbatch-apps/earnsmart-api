@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,9 +20,8 @@ func RequireAuth(next http.Handler) http.Handler {
 		// otherwise, call the next handler
 
 		tokenString := r.Header.Get("Authorization")
-
 		if tokenString == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized - No Auth token found", http.StatusUnauthorized)
 			return
 		}
 
@@ -37,25 +37,26 @@ func RequireAuth(next http.Handler) http.Handler {
 		})
 
 		if err != nil || !token.Valid {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized - Invalid token", http.StatusUnauthorized)
+			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Println(claims)
+			http.Error(w, "Unauthorized - Claims not recognised", http.StatusUnauthorized)
 			return
 		}
 
-		log.Println(claims)
-
-		user_id, ok := claims["user_id"].(uint)
+		userId, ok := claims["id"].(float64)
 
 		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Println(userId, reflect.TypeOf(userId))
+			http.Error(w, "Unauthorized - claims not ok", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userIDKey, user_id)
+		ctx := context.WithValue(r.Context(), userIDKey, uint(userId))
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)

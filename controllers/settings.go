@@ -32,26 +32,14 @@ func (c *SettingController) ListSettings(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	response := schema.SettingsResponse{Status: "ok", Settings: settings}
 
-	if err := json.NewEncoder(w).Encode(settings); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-// func (c *SettingController) GetSetting(w http.ResponseWriter, r *http.Request) {
-// 	id := r.PathValue("id")
-// 	setting, err := c.service.Get(id)
-// 	fmt.Fprintf(w, "get a setting: %v\n", id)
-// }
-
-// func (c *SettingController) AddSetting(w http.ResponseWriter, r *http.Request) {
-//   userID, err := middleware.GetUserIDFromContext(r.Context())
-//   //
-// 	// fmt.Fprint(w, "adding a setting\n")
-// }
-
 func (c *SettingController) EditSetting(w http.ResponseWriter, r *http.Request) {
-	// id := r.PathValue("id")
 	userID, err := middleware.GetUserIDFromContext(r.Context())
 
 	if err != nil {

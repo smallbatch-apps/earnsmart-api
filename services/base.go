@@ -1,9 +1,9 @@
 package services
 
 import (
-	"gorm.io/gorm"
-
+	"github.com/smallbatch-apps/earnsmart-api/models"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
+	"gorm.io/gorm"
 )
 
 // BaseService provides common CRUD operations
@@ -24,35 +24,17 @@ func (s *BaseService) GetTBClient() tb.Client {
 	return s.tbClient
 }
 
-// // Get retrieves an entity by ID
-// func (s *BaseService[T]) Get(id uint) (*T, error) {
-// 	var entity T
-// 	if err := s.db.First(&entity, id).Error; err != nil {
-// 		return nil, err
-// 	}
-// 	return &entity, nil
-// }
+func (s *BaseService) LogActivity(activityType models.ActivityType, message string, userID uint) (models.Activity, error) {
+	activity := models.Activity{
+		Type:    activityType,
+		Message: message,
+		UserID:  userID,
+	}
 
-// // GetAll retrieves all entities
-// func (s *BaseService[T]) GetAll() ([]T, error) {
-// 	var entities []T
-// 	if err := s.db.Find(&entities).Error; err != nil {
-// 		return nil, err
-// 	}
-// 	return entities, nil
-// }
+	err := s.db.Create(&activity).Error
+	if err != nil {
+		return activity, err
+	}
 
-// // Create creates a new entity
-// func (s *BaseService[T]) Create(entity *T) error {
-// 	return s.db.Create(entity).Error
-// }
-
-// // Update updates an existing entity
-// func (s *BaseService[T]) Update(entity *T) error {
-// 	return s.db.Save(entity).Error
-// }
-
-// // Delete deletes an entity by ID
-// func (s *BaseService[T]) Delete(id uint) error {
-// 	return s.db.Delete(new(T), id).Error
-// }
+	return activity, nil
+}

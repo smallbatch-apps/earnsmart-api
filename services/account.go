@@ -1,9 +1,10 @@
 package services
 
 import (
+	"errors"
+	"log"
 	"math/big"
 
-	"github.com/google/uuid"
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
@@ -41,57 +42,62 @@ func (s *AccountService) GetOrCreateAccount(accountSearch models.Account) (model
 	return account, nil
 }
 
-func (s *AccountService) CreateWalletAccount(userID uint, currency string) (uuid.UUID, error) {
+func (s *AccountService) CreateWalletAccount(userID uint, currency string) (models.Account, error) {
 	return s.CreateFundAccount(userID, currency, models.AccountCodeWallet)
 }
 
-func (s *AccountService) CreateFundAccount(userID uint, currency string, code models.AccountCode) (uuid.UUID, error) {
+func (s *AccountService) CreateFundAccount(userID uint, currency string, code models.AccountCode) (models.Account, error) {
 	var accounts = []tbt.Account{}
-
-	local_currency := models.AllCurrencies[currency]
-
-	account_id, _ := uuid.NewV7()
-
-	accounts = append(accounts, tbt.Account{
-		ID:         models.ConvertUUIDToUint128(account_id),
-		Code:       uint16(code),
-		Ledger:     uint32(local_currency.LedgerID),
-		UserData64: uint64(userID),
-		Flags:      tbt.AccountFlags{History: true}.ToUint16(),
-	})
-
-	_, err := s.tbClient.CreateAccounts(accounts)
-
-	if err != nil {
-		return account_id, err
-	}
+	localCurrency := models.AllCurrencies[currency]
 
 	var account = models.Account{
-		AccountID:   account_id,
 		UserID:      userID,
 		Currency:    currency,
 		AccountCode: code,
 	}
-	err = s.db.Create(&account).Error
+	err := s.db.Create(&account).Error
 
 	if err != nil {
-		return account_id, err
+		log.Println("Error creating account: ", err.Error())
+		return account, err
+	} else {
+		log.Println("Created db account: ", account.ID)
 	}
 
-	return account_id, nil
+	accounts = append(accounts, tbt.Account{
+		ID:         tbt.ToUint128(uint64(account.ID)),
+		Code:       uint16(code),
+		Ledger:     uint32(localCurrency.LedgerID),
+		UserData64: uint64(userID),
+		Flags:      tbt.AccountFlags{History: true}.ToUint16(),
+	})
+
+	// utils.LogAccount(accounts[0])
+
+	result, err := s.tbClient.CreateAccounts(accounts)
+
+	if err != nil {
+		log.Println("Error creating account: ", err.Error())
+		return account, err
+	} else {
+		log.Println("Created tigerbeetle account: ", account.ID)
+		log.Printf("Result: %+v\n", result)
+	}
+	s.LogActivity(models.ActivityTypeAdmin, "Creating fund account", userID)
+	return account, nil
 }
 
 func (s *AccountService) ExtractIDs(accounts []models.Account) ([]tbt.Uint128, error) {
-	var account_ids = []tbt.Uint128{}
+	var accountIds = []tbt.Uint128{}
 	for _, account := range accounts {
-		account_ids = append(account_ids, models.ConvertUUIDToUint128(account.AccountID))
+		accountIds = append(accountIds, tbt.ToUint128(uint64(account.ID)))
 	}
-	return account_ids, nil
+	return accountIds, nil
 }
 
 type AccountBalanceWithID struct {
 	tbt.AccountBalance
-	AccountID uuid.UUID
+	AccountID tbt.Uint128
 }
 
 func (s *AccountService) LookupAccountBalances(accountIds []tbt.Uint128) ([]AccountBalanceWithID, error) {
@@ -100,27 +106,48 @@ func (s *AccountService) LookupAccountBalances(accountIds []tbt.Uint128) ([]Acco
 
 	//balance, err := s.tbClient.GetAccountBalances()
 	var filter = tbt.AccountFilter{
-		AccountID:    tbt.ToUint128(0),
-		TimestampMin: 0,
-		TimestampMax: 0,
-		Limit:        10,
+		AccountID: tbt.ToUint128(0),
+		// TimestampMin: 0,
+		// TimestampMax: 0,
+		Limit: 10,
 		Flags: tbt.AccountFilterFlags{
 			Debits:  true,
 			Credits: true,
 		}.ToUint32(),
 	}
 
+	// utils.LogAccountIDs(accountIds)
+
 	for _, accountId := range accountIds {
 		filter.AccountID = accountId
+
+		// utils.LogAccountFilter(filter)
+
 		balance, err := s.tbClient.GetAccountBalances(filter)
+		// utils.LogJson("Balance:", balance)
+
+		// utils.LogAccountBalance(balance[0])
 
 		if err != nil {
+			log.Println("Error getting account balances: ", err)
 			return balances, err
+		}
+
+		if len(balance) == 0 {
+			balance = []tbt.AccountBalance{
+				{
+					DebitsPending:  tbt.ToUint128(0),
+					DebitsPosted:   tbt.ToUint128(0),
+					CreditsPending: tbt.ToUint128(0),
+					CreditsPosted:  tbt.ToUint128(0),
+					Timestamp:      0,
+				},
+			}
 		}
 
 		balanceWithID := AccountBalanceWithID{
 			AccountBalance: balance[0],
-			AccountID:      models.ConvertUint128ToUUID(accountId),
+			AccountID:      accountId,
 		}
 		balances = append(balances, balanceWithID)
 	}
@@ -151,4 +178,15 @@ func (s *AccountService) AccountHasSufficientBalance(account models.Account, amo
 
 	result := new(big.Int).Sub(balance, &amountBigInt)
 	return result.Sign() >= 0
+}
+
+func (s *AccountService) GetTreasuryWallet(currency string) (tbt.Uint128, error) {
+	var account models.Account
+	s.db.Where(models.Account{UserID: 1, Currency: currency, AccountCode: models.AccountCodeWallet}).First(&account)
+
+	if account.ID == 0 {
+		return tbt.ToUint128(0), errors.New("treasury wallet not found")
+	}
+	return tbt.ToUint128(uint64(account.ID)), nil
+
 }

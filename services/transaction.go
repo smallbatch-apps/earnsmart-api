@@ -2,11 +2,12 @@ package services
 
 import (
 	"errors"
+	"log"
 	"math"
 	"math/big"
 
-	"github.com/google/uuid"
 	"github.com/smallbatch-apps/earnsmart-api/models"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 	"gorm.io/gorm"
@@ -40,29 +41,39 @@ func NewTransactionService(db *gorm.DB, tbClient tb.Client) *TransactionService 
 	}
 }
 
-func (s *TransactionService) CreateDeposit(account uuid.UUID, amount tbt.Uint128, currency string) ([]tbt.TransferEventResult, error) {
+func (s *TransactionService) CreateDeposit(account models.Account, amount tbt.Uint128, currency string) ([]tbt.TransferEventResult, error) {
 
 	localCurrency := models.AllCurrencies[currency]
 	priceService := NewPriceService(s.db, s.tbClient)
+	accountService := NewAccountService(s.db, s.tbClient)
 	amountPrice, _ := priceService.GetAmountPrice(currency, amount)
+	adminWallet, err := accountService.GetTreasuryWallet(currency)
+
+	if err != nil {
+		return nil, errors.New("admin wallet not found")
+	}
 
 	transfers := []tbt.Transfer{
 		{
-			DebitAccountID:  models.GenerateUUID(),
-			CreditAccountID: models.ConvertUUIDToUint128(account),
+			ID:              models.GenerateUUID(),
+			DebitAccountID:  adminWallet,
+			CreditAccountID: utils.ToUint128(account.ID),
 			Amount:          amount,
+			Code:            models.TransferCodeDeposit,
 			Ledger:          uint32(localCurrency.LedgerID),
 			UserData128:     floatToUint128(amountPrice),
-			UserData32:      uint32(models.TransactionTypeDeposit),
 		},
 	}
 
 	transferResults, err := s.tbClient.CreateTransfers(transfers)
 
 	if err != nil {
+		log.Println("error creating deposit", err)
 		return nil, err
 	}
 
+	log.Println("deposit created", transferResults)
+	s.LogActivity(models.ActivityTypeUser, "Creating fund account", account.UserID)
 	return transferResults, nil
 }
 
@@ -77,15 +88,20 @@ func (s *TransactionService) CreateWithdrawal(account models.Account, amount tbt
 	}
 
 	amountPrice, _ := priceService.GetAmountPrice(currency, amount)
+	adminWallet, err := accountService.GetTreasuryWallet(currency)
+	if err != nil {
+		return nil, errors.New("admin wallet not found")
+	}
 
 	transfers := []tbt.Transfer{
 		{
-			DebitAccountID:  models.ConvertUUIDToUint128(account.AccountID),
-			CreditAccountID: models.GenerateUUID(),
+			ID:              models.GenerateUUID(),
+			DebitAccountID:  utils.ToUint128(account.ID),
+			CreditAccountID: adminWallet,
 			Amount:          amount,
 			Ledger:          uint32(localCurrency.LedgerID),
 			UserData128:     floatToUint128(float64(amountPrice)),
-			UserData32:      uint32(models.TransactionTypeWithdraw),
+			Code:            models.TransferCodeWithdraw,
 		},
 	}
 
@@ -98,7 +114,7 @@ func (s *TransactionService) CreateWithdrawal(account models.Account, amount tbt
 	return transferResults, nil
 }
 
-func (s *TransactionService) CreateTransfer(creditAccount models.Account, debitAccount models.Account, amount tbt.Uint128, currency string) ([]tbt.TransferEventResult, error) {
+func (s *TransactionService) CreateTransfer(creditAccount models.Account, debitAccount models.Account, amount tbt.Uint128, currency string, code uint16) ([]tbt.TransferEventResult, error) {
 
 	priceService := NewPriceService(s.db, s.tbClient)
 	accountService := NewAccountService(s.db, s.tbClient)
@@ -113,18 +129,21 @@ func (s *TransactionService) CreateTransfer(creditAccount models.Account, debitA
 
 	transfers := []tbt.Transfer{
 		{
-			CreditAccountID: models.ConvertUUIDToUint128(creditAccount.AccountID),
-			DebitAccountID:  models.ConvertUUIDToUint128(debitAccount.AccountID),
+			ID:              models.GenerateUUID(),
+			CreditAccountID: tbt.ToUint128(uint64(creditAccount.ID)),
+			DebitAccountID:  tbt.ToUint128(uint64(debitAccount.ID)),
 			Amount:          amount,
 			Ledger:          uint32(localCurrency.LedgerID),
 			UserData128:     floatToUint128(float64(amountPrice)),
 			UserData32:      uint32(models.TransactionTypeWithdraw),
+			Code:            code,
 		},
 	}
 
 	transferResults, err := s.tbClient.CreateTransfers(transfers)
 
 	if err != nil {
+		log.Println("error creating transfer", err)
 		return nil, err
 	}
 
@@ -133,7 +152,6 @@ func (s *TransactionService) CreateTransfer(creditAccount models.Account, debitA
 
 type AccountTransferWithID struct {
 	tbt.Transfer
-	AccountID uuid.UUID
 	AmountUSD float64
 	Currency  string
 }
@@ -159,7 +177,6 @@ func (s *TransactionService) GetAllTransactions(accountIds []tbt.Uint128) ([]Acc
 		for _, transfer := range transfers {
 			transferWithID := AccountTransferWithID{
 				Transfer:  transfer,
-				AccountID: models.ConvertUint128ToUUID(accountId),
 				AmountUSD: uint128ToFloat(transfer.UserData128),
 				Currency:  models.LedgerCurrency[transfer.Ledger],
 			}

@@ -68,6 +68,8 @@ func (c *UserController) DeleteUser(w http.ResponseWriter, r *http.Request) {
 func (c *UserController) LogIn(w http.ResponseWriter, r *http.Request) {
 	var payload LogInPayload
 	error_string := "Invalid request payload"
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return

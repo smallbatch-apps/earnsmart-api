@@ -93,7 +93,7 @@ func (c *TransactionController) AddTransaction(w http.ResponseWriter, r *http.Re
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			c.service.CreateDeposit(account.AccountID, tbt.ToUint128(payload.Amount), payload.Currency)
+			c.service.CreateDeposit(account, tbt.ToUint128(payload.Amount), payload.Currency)
 		} else if payload.TransactionType == models.TransactionTypeWithdraw {
 			accounts, err := accountService.GetAccounts(accountSearch)
 			if err != nil {
@@ -122,6 +122,8 @@ func (c *TransactionController) AddTransaction(w http.ResponseWriter, r *http.Re
 
 		walletSearchParams := models.Account{UserID: userID, Currency: payload.Currency, AccountCode: models.AccountCodeWallet}
 		walletAccounts, err := accountService.GetAccounts(walletSearchParams)
+
+		code := models.TransferCodeDeploy
 
 		if len(walletAccounts) == 0 || err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -160,11 +162,12 @@ func (c *TransactionController) AddTransaction(w http.ResponseWriter, r *http.Re
 			creditAccount = account
 			debitAccount = walletAccount
 		} else {
+			code = models.TransferCodeRedeem
 			creditAccount = walletAccount
 			debitAccount = account
 		}
 
-		_, err = c.service.CreateTransfer(creditAccount, debitAccount, tbt.ToUint128(payload.Amount), payload.Currency)
+		_, err = c.service.CreateTransfer(creditAccount, debitAccount, tbt.ToUint128(payload.Amount), payload.Currency, code)
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
