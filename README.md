@@ -21,6 +21,7 @@ This list will be updated as features are added.
 - [x] User session
 - [ ] User password reset
 - [x] Price listings
+- [x] Activity logging
 - [x] Model creation and database structure
 - [x] Database migration
 - [x] Fund routing
@@ -36,3 +37,4 @@ This list will be updated as features are added.
 - [x] User investment and divestment routes
 - [x] RFQ routing and functionality
 - [ ] Swap routing and functionality
+- [ ] Role Based Access Control - RBAC

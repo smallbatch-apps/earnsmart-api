@@ -10,12 +10,10 @@ import (
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 )
 
-// Debug prints a formatted debug message
 func Debug(message string) {
 	fmt.Println("DEBUG:", message)
 }
 
-// FormatString formats a string
 func FormatString(str string) string {
 	return fmt.Sprintf("Formatted: %s", str)
 }
@@ -58,5 +56,3 @@ func FromUint128(u tbt.Uint128) uint64 {
 	bigIntValue := u.BigInt()
 	return bigIntValue.Uint64()
 }
-
-// BigIntToUint64 converts a big.Int to uint64
