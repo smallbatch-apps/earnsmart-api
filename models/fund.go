@@ -27,7 +27,7 @@ func (fund Fund) MarshalJSON() ([]byte, error) {
 	type Alias Fund
 
 	return json.Marshal(&struct {
-		ID       uint    `json:"id"`
+		ID       uint64  `json:"id"`
 		Name     string  `json:"name"`
 		Currency string  `json:"currency"`
 		Period   uint    `json:"period"`

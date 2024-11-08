@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 
 	"github.com/smallbatch-apps/earnsmart-api/models"
@@ -55,4 +56,19 @@ func ToUint128(id uint) tbt.Uint128 {
 func FromUint128(u tbt.Uint128) uint64 {
 	bigIntValue := u.BigInt()
 	return bigIntValue.Uint64()
+}
+
+func RespondOk(w http.ResponseWriter, key string, data interface{}) error {
+	return json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		key:      data,
+	})
+}
+
+func RespondError(w http.ResponseWriter, err error, status int) error {
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "error",
+		"error":  err.Error(),
+	})
 }

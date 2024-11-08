@@ -14,7 +14,7 @@ import (
 )
 
 type UserController struct {
-	service *services.UserService
+	services *services.Services
 }
 
 type LogInPayload struct {
@@ -22,8 +22,8 @@ type LogInPayload struct {
 	Password string `json:"password"`
 }
 
-func NewUserController(service *services.UserService) *UserController {
-	return &UserController{service: service}
+func NewUserController(services *services.Services) *UserController {
+	return &UserController{services}
 }
 
 func (c *UserController) AddUser(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +38,7 @@ func (c *UserController) AddUser(w http.ResponseWriter, r *http.Request) {
 		Password: payload.Password,
 		Name:     payload.Name,
 	}
-	err := c.service.CreateUser(user)
+	err := c.services.User.CreateUser(user)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -75,7 +75,7 @@ func (c *UserController) LogIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := c.service.FindUserByEmail(payload.Email)
+	user, err := c.services.User.FindUserByEmail(payload.Email)
 
 	if err != nil {
 		http.Error(w, error_string, http.StatusBadRequest)

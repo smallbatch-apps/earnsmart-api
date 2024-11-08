@@ -22,26 +22,18 @@ func main() {
 	}
 
 	fmt.Println("Setting up services")
-
-	accountService := services.NewAccountService(database.DB, tbClient)
-	priceService := services.NewPriceService(database.DB, tbClient)
-	fundService := services.NewFundService(database.DB, tbClient)
-	transactionService := services.NewTransactionService(database.DB, tbClient)
-	settingService := services.NewSettingService(database.DB, tbClient)
-	userService := services.NewUserService(database.DB, tbClient)
-	adminService := services.NewAdminService(database.DB, tbClient)
-	activityService := services.NewActivityService(database.DB, tbClient)
+	services := services.NewServices(database.DB, tbClient)
 
 	fmt.Println("Setting up controllers")
-	accountController := controllers.NewAccountController(accountService)
-	priceController := controllers.NewPriceController(priceService)
-	fundController := controllers.NewFundController(fundService)
-	transactionController := controllers.NewTransactionController(transactionService)
-	settingController := controllers.NewSettingController(settingService)
-	userController := controllers.NewUserController(userService)
-	adminController := controllers.NewAdminController(adminService)
-	quoteController := controllers.NewQuoteController(priceService)
-	activityController := controllers.NewActivityController(activityService)
+	accountController := controllers.NewAccountController(services)
+	priceController := controllers.NewPriceController(services)
+	fundController := controllers.NewFundController(services)
+	transactionController := controllers.NewTransactionController(services)
+	settingController := controllers.NewSettingController(services)
+	userController := controllers.NewUserController(services)
+	adminController := controllers.NewAdminController(services)
+	quoteController := controllers.NewQuoteController(services)
+	activityController := controllers.NewActivityController(services)
 
 	authedStack := middleware.CreateStack(
 		middleware.LogRequest,
@@ -55,20 +47,22 @@ func main() {
 	router.HandleFunc("POST /user", userController.AddUser)
 	router.HandleFunc("GET /seed", adminController.SeedData)
 	router.HandleFunc("POST /quote", quoteController.GetQuote)
+	routes.RegisterPriceRoutes(router, priceController)
 
 	authedRouter := http.NewServeMux()
 	routes.RegisterAccountRoutes(authedRouter, accountController)
-	routes.RegisterPriceRoutes(authedRouter, priceController)
+
 	routes.RegisterFundRoutes(authedRouter, fundController)
 	routes.RegisterTransactionRoutes(authedRouter, transactionController)
 	routes.RegisterSettingRoutes(authedRouter, settingController)
 	routes.RegisterUserRoutes(authedRouter, userController)
+	routes.RegisterActivityRoutes(authedRouter, activityController)
 
 	router.Handle("/", authedStack(authedRouter))
 
 	server := http.Server{
 		Addr:    ":8090",
-		Handler: router,
+		Handler: middleware.AddHeaders(router),
 	}
 
 	fmt.Println("Server started at http://localhost:8090")

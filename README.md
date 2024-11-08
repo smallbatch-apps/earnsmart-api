@@ -1,10 +1,12 @@
 # earnsmart-api
 
-API for EarnSmart, a financial services investment platform powered by Golang, Tigerbeetle and PostgreSQL.
+API for EarnSmart, a financial services investment platform powered by Golang, Tigerbeetle and PostgreSQL. It is intended to form a base for a fully featured application that adds additional business rules and requirements onto the existing scaffold. The application as developed is by-design minimal in requirements. Questions such as fee schedules, KYC, and other business rules are not yet implemented, because they are highly dependent on the specific use-case and business model.
+
+Near infinite additional functionality can be added to the base scaffold, and the application is designed to allow for such additions.
 
 ## About Tigerbeetle
 
-Tigerbeetle is a high performance, ultra-high availability database solution for financial transactions. Tigerbeetle handles all user account management, balances, and bookkeeping for EarnSmart.
+Tigerbeetle is a high performance, ultra-high availability database solution for financial transactions. Tigerbeetle handles all user account management, balances, and book-keeping for EarnSmart.
 
 ## Current feature set
 
@@ -36,5 +38,6 @@ This list will be updated as features are added.
 - [ ] User account management
 - [x] User investment and divestment routes
 - [x] RFQ routing and functionality
-- [ ] Swap routing and functionality
+- [x] Swap routing and functionality
 - [ ] Role Based Access Control - RBAC
+- [ ] Crypto management and wallet generation

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -29,11 +30,11 @@ func (s *AdminService) SafeToMigrate() bool {
 
 func (s *AdminService) SeedData() error {
 
-	s.db.AutoMigrate(&models.Account{}, &models.Fund{}, &models.Price{}, &models.Setting{}, &models.User{}, &models.Activity{})
+	s.db.AutoMigrate(&models.Account{}, &models.Activity{}, &models.Fund{}, &models.Price{}, &models.Setting{}, &models.Transaction{}, &models.User{})
 
 	priceService := NewPriceService(s.db, s.tbClient)
 	accountService := NewAccountService(s.db, s.tbClient)
-	transactionService := NewTransactionService(s.db, s.tbClient)
+	transferService := NewTransferService(s.db, s.tbClient)
 
 	log.Println("Updating prices")
 
@@ -58,7 +59,7 @@ func (s *AdminService) SeedData() error {
 	for currency := range models.AllCurrencies {
 		_, err = accountService.CreateWalletAccount(adminUser.ID, currency)
 		if err != nil {
-			log.Println("Error creating eth wallet account: ", err.Error())
+			log.Println(fmt.Sprintf("Error creating %s wallet account", currency), err.Error())
 			return err
 		}
 	}
@@ -80,29 +81,29 @@ func (s *AdminService) SeedData() error {
 
 	log.Println("Creating test accounts and deposits")
 
-	var testAccount models.Account
-	_, err = accountService.CreateWalletAccount(testUser.ID, "ETH")
+	// var testAccount models.Account
+	testAccount, err := accountService.CreateWalletAccount(testUser.ID, "ETH")
 	if err != nil {
 		log.Println("Error creating eth wallet account: ", err.Error())
 		return err
 	}
 
-	// if _, err = transactionService.CreateDeposit(testAccountId, tbt.ToUint128(2997924580000000000), "ETH"); err != nil {
-	// 	log.Println("Error creating eth deposit: ", err.Error())
-	// 	return err
-	// }
+	if _, err = transferService.CreateDepositTransfer(testAccount, tbt.ToUint128(3290915267000000000), "ETH"); err != nil {
+		log.Println("Error creating eth deposit: ", err.Error())
+		return err
+	}
 
 	if testAccount, err = accountService.CreateWalletAccount(testUser.ID, "USDT"); err != nil {
 		log.Println("Error creating usdt wallet account: ", err.Error())
 		return err
 	}
 
-	if _, err = transactionService.CreateDeposit(testAccount, tbt.ToUint128(2997924580000000000), "USDT"); err != nil {
+	if _, err = transferService.CreateDepositTransfer(testAccount, tbt.ToUint128(1200000000), "USDT"); err != nil {
 		log.Println("Error creating usdt deposit: ", err.Error())
 		return err
 	}
-	// log.Println("Populating all funds")
-	// s.db.Create(&models.AllFunds)
+	log.Println("Populating all funds")
+	s.db.Create(&models.AllFunds)
 
 	return nil
 }

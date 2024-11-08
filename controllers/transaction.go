@@ -9,22 +9,23 @@ import (
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
-
-	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 )
 
 type TransactionController struct {
-	service *services.TransactionService
+	services *services.Services
 }
 
-func NewTransactionController(service *services.TransactionService) *TransactionController {
-	return &TransactionController{service: service}
+func NewTransactionController(services *services.Services) *TransactionController {
+	return &TransactionController{services}
 }
 
 func (c *TransactionController) ListTransactions(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDFromContext(r.Context())
 
-	accountService := services.NewAccountService(c.service.GetDB(), c.service.GetTBClient())
+	accountService := c.services.Account
+	transferService := c.services.Transfer
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -42,25 +43,52 @@ func (c *TransactionController) ListTransactions(w http.ResponseWriter, r *http.
 		return
 	}
 
-	transactions, err := c.service.GetAllTransactions(accountIds)
+	transfers, err := transferService.GetAllTransfers(accountIds)
 	if err != nil {
 		errs.InternalError(w, "Failed to successfully get transactions", "Internal server error")
 		return
 	}
 
-	transactionsResponse := schema.TransactionsResponse{
-		Status:       "success",
-		Transactions: transactions,
+	utils.RespondOk(w, "transactions", transfers)
+}
+
+func (c *TransactionController) AddFundTransaction(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
+		utils.RespondError(w, err, http.StatusUnauthorized)
+		return
 	}
 
-	if err := json.NewEncoder(w).Encode(transactionsResponse); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	var payload schema.FundTransactionPayload
+	err = json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
+		utils.RespondError(w, err, http.StatusBadRequest)
+		return
 	}
+
+	tType := payload.TransactionType
+
+	var transaction models.Transaction
+
+	if tType == models.TransactionTypeSubscribe {
+		transaction, err = c.services.Transaction.CreateSubscription(userID, payload.Amount, payload.Currency, payload.AccountCode)
+		if err != nil {
+			utils.RespondError(w, err, http.StatusInternalServerError)
+			return
+		}
+	} else if tType == models.TransactionTypeRedeem {
+		transaction, err = c.services.Transaction.CreateRedemption(userID, payload.Amount, payload.Currency, payload.AccountCode)
+		if err != nil {
+			utils.RespondError(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	utils.RespondOk(w, "transaction", transaction)
 }
 
 func (c *TransactionController) AddTransaction(w http.ResponseWriter, r *http.Request) {
-	fundService := services.NewFundService(c.service.GetDB(), c.service.GetTBClient())
-	accountService := services.NewAccountService(c.service.GetDB(), c.service.GetTBClient())
 	userID, err := middleware.GetUserIDFromContext(r.Context())
 	if err != nil {
 		errs.UserTokenNotValidError(w)
@@ -74,108 +102,28 @@ func (c *TransactionController) AddTransaction(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	accountSearch := models.Account{
-		UserID:   userID,
-		Currency: payload.Currency,
-	}
-
 	tType := payload.TransactionType
-	isWalletType := tType == models.TransactionTypeDeposit || tType == models.TransactionTypeWithdraw
-	isFundType := tType == models.TransactionTypeDeploy || tType == models.TransactionTypeRedeem
+	var transaction models.Transaction
 
-	if isWalletType {
-		accountSearch.AccountCode = models.AccountCodeWallet
-
-		if payload.TransactionType == models.TransactionTypeDeposit {
-			account, err := accountService.GetOrCreateAccount(accountSearch)
-			if err != nil {
-				errs.InternalError(w, err.Error(), "Internal server error")
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			c.service.CreateDeposit(account, tbt.ToUint128(payload.Amount), payload.Currency)
-		} else if payload.TransactionType == models.TransactionTypeWithdraw {
-			accounts, err := accountService.GetAccounts(accountSearch)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if len(accounts) == 0 {
-				http.Error(w, "Account not found", http.StatusBadRequest)
-				return
-			}
-			c.service.CreateWithdrawal(accounts[0], tbt.ToUint128(payload.Amount), payload.Currency)
-		}
-	} else if isFundType {
-		var payload schema.FundTransactionPayload
-		err = json.NewDecoder(r.Body).Decode(&payload)
+	if tType == models.TransactionTypeDeposit {
+		transaction, err = c.services.Transaction.CreatePendingDeposit(userID, payload.Amount, payload.Address, payload.Currency)
 		if err != nil {
-			errs.InvalidPayloadError(w)
+			utils.RespondError(w, err, http.StatusInternalServerError)
 			return
 		}
-
-		fund, err := fundService.GetFund(payload.FundID)
+	} else if tType == models.TransactionTypeWithdraw {
+		transaction, err = c.services.Transaction.CreatePendingWithdrawal(userID, payload.Amount, payload.Address, payload.Currency)
 		if err != nil {
-			errs.InternalError(w, err.Error(), "Internal server error")
+			utils.RespondError(w, err, http.StatusInternalServerError)
 			return
 		}
-
-		walletSearchParams := models.Account{UserID: userID, Currency: payload.Currency, AccountCode: models.AccountCodeWallet}
-		walletAccounts, err := accountService.GetAccounts(walletSearchParams)
-
-		code := models.TransferCodeDeploy
-
-		if len(walletAccounts) == 0 || err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		walletAccount := walletAccounts[0]
-		accountSearch.AccountCode = fund.Code
-
-		accounts, err := accountService.GetAccounts(accountSearch)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		var account models.Account
-		if len(accounts) == 0 {
-			if payload.TransactionType == models.TransactionTypeDeploy {
-				account, err = accountService.GetOrCreateAccount(accountSearch)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
-				}
-			} else {
-				http.Error(w, "Account not found", http.StatusBadRequest)
-				return
-			}
-		} else {
-			account = accounts[0]
-		}
-
-		var creditAccount models.Account
-		var debitAccount models.Account
-
-		if tType == models.TransactionTypeDeploy {
-			creditAccount = account
-			debitAccount = walletAccount
-		} else {
-			code = models.TransferCodeRedeem
-			creditAccount = walletAccount
-			debitAccount = account
-		}
-
-		_, err = c.service.CreateTransfer(creditAccount, debitAccount, tbt.ToUint128(payload.Amount), payload.Currency, code)
-
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
 	}
+
+	watcher := &services.TransactionWatcher{
+		TransactionService: c.services.Transaction,
+	}
+	watcher.WatchTransaction(transaction)
 
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Transaction created successfully"))
+	utils.RespondOk(w, "transaction", transaction)
 }

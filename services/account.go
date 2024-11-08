@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 
@@ -42,18 +43,18 @@ func (s *AccountService) GetOrCreateAccount(accountSearch models.Account) (model
 	return account, nil
 }
 
-func (s *AccountService) CreateWalletAccount(userID uint, currency string) (models.Account, error) {
+func (s *AccountService) CreateWalletAccount(userID uint64, currency string) (models.Account, error) {
 	return s.CreateFundAccount(userID, currency, models.AccountCodeWallet)
 }
 
-func (s *AccountService) CreateFundAccount(userID uint, currency string, code models.AccountCode) (models.Account, error) {
+func (s *AccountService) CreateFundAccount(userID uint64, currency string, code models.AccountCode) (models.Account, error) {
 	var accounts = []tbt.Account{}
 	localCurrency := models.AllCurrencies[currency]
 
 	var account = models.Account{
-		UserID:      userID,
-		Currency:    currency,
-		AccountCode: code,
+		OwnableModel: models.OwnableModel{UserID: userID},
+		Currency:     currency,
+		AccountCode:  code,
 	}
 	err := s.db.Create(&account).Error
 
@@ -64,12 +65,19 @@ func (s *AccountService) CreateFundAccount(userID uint, currency string, code mo
 		log.Println("Created db account: ", account.ID)
 	}
 
+	flags := tbt.AccountFlags{History: true}
+	// Treasury accounts (userID 1) can go negative,
+	// all others must maintain positive balance
+	if userID != 1 {
+		flags.DebitsMustNotExceedCredits = true
+	}
+
 	accounts = append(accounts, tbt.Account{
-		ID:         tbt.ToUint128(uint64(account.ID)),
+		ID:         account.TbID(),
 		Code:       uint16(code),
-		Ledger:     uint32(localCurrency.LedgerID),
-		UserData64: uint64(userID),
-		Flags:      tbt.AccountFlags{History: true}.ToUint16(),
+		Ledger:     localCurrency.LedgerID,
+		UserData64: userID,
+		Flags:      flags.ToUint16(),
 	})
 
 	// utils.LogAccount(accounts[0])
@@ -83,7 +91,13 @@ func (s *AccountService) CreateFundAccount(userID uint, currency string, code mo
 		log.Println("Created tigerbeetle account: ", account.ID)
 		log.Printf("Result: %+v\n", result)
 	}
-	s.LogActivity(models.ActivityTypeAdmin, "Creating fund account", userID)
+
+	accountType := "fund"
+	if code == models.AccountCodeWallet {
+		accountType = "wallet"
+	}
+
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Creating %s account for %s", accountType, currency), userID)
 	return account, nil
 }
 
@@ -104,30 +118,19 @@ func (s *AccountService) LookupAccountBalances(accountIds []tbt.Uint128) ([]Acco
 
 	var balances = []AccountBalanceWithID{}
 
-	//balance, err := s.tbClient.GetAccountBalances()
 	var filter = tbt.AccountFilter{
 		AccountID: tbt.ToUint128(0),
-		// TimestampMin: 0,
-		// TimestampMax: 0,
-		Limit: 10,
+		Limit:     10,
 		Flags: tbt.AccountFilterFlags{
 			Debits:  true,
 			Credits: true,
 		}.ToUint32(),
 	}
 
-	// utils.LogAccountIDs(accountIds)
-
 	for _, accountId := range accountIds {
 		filter.AccountID = accountId
 
-		// utils.LogAccountFilter(filter)
-
 		balance, err := s.tbClient.GetAccountBalances(filter)
-		// utils.LogJson("Balance:", balance)
-
-		// utils.LogAccountBalance(balance[0])
-
 		if err != nil {
 			log.Println("Error getting account balances: ", err)
 			return balances, err
@@ -180,13 +183,25 @@ func (s *AccountService) AccountHasSufficientBalance(account models.Account, amo
 	return result.Sign() >= 0
 }
 
-func (s *AccountService) GetTreasuryWallet(currency string) (tbt.Uint128, error) {
+func (s *AccountService) GetTreasuryWallet(currency string) (models.Account, error) {
 	var account models.Account
-	s.db.Where(models.Account{UserID: 1, Currency: currency, AccountCode: models.AccountCodeWallet}).First(&account)
+	searchModel := models.Account{OwnableModel: models.OwnableModel{UserID: 1}, Currency: currency, AccountCode: models.AccountCodeWallet}
+
+	s.db.Where(&searchModel).First(&account)
 
 	if account.ID == 0 {
-		return tbt.ToUint128(0), errors.New("treasury wallet not found")
+		return account, errors.New("treasury wallet not found")
 	}
-	return tbt.ToUint128(uint64(account.ID)), nil
+	return account, nil
+}
 
+func (s *AccountService) GetUserWallet(userID uint64, currency string) (models.Account, error) {
+	var account models.Account
+
+	s.db.Where(models.Account{OwnableModel: models.OwnableModel{UserID: userID}, Currency: currency, AccountCode: models.AccountCodeWallet}).First(&account)
+
+	if account.ID == 0 {
+		return account, errors.New("currency wallet not found")
+	}
+	return account, nil
 }

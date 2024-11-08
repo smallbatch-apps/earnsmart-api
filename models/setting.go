@@ -14,27 +14,20 @@ const (
 
 type Setting struct {
 	CustomModel
-	Name   string `gorm:"uniqueIndex:idx_user_name"`
-	Type   SettingType
-	Value  string
-	UserID uint `json:"user_id" gorm:"index;uniqueIndex:idx_user_name"`
-	User   User
+	OwnableModel `gorm:"index;uniqueIndex:idx_user_name"`
+	Name         string      `json:"name" gorm:"uniqueIndex:idx_user_name"`
+	Type         SettingType `json:"type"`
+	Value        string      `json:"value"`
 }
 
 func (setting Setting) MarshalJSON() ([]byte, error) {
 	type Alias Setting
 
 	return json.Marshal(&struct {
-		ID    uint   `json:"id"`
-		Name  string `json:"name"`
-		Type  string `json:"type"`
-		Value string `json:"value"`
+		Type string `json:"type"`
 		Alias
 	}{
-		ID:    setting.ID,
-		Name:  setting.Name,
 		Type:  string(setting.Type),
-		Value: setting.Value,
 		Alias: (Alias)(setting),
 	})
 }

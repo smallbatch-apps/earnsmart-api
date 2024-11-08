@@ -47,13 +47,16 @@ type SettingPayload struct {
 
 type TransactionPayload struct {
 	TransactionType models.TransactionType `json:"transaction_type"`
-	Amount          uint64                 `json:"amount"`
+	Amount          string                 `json:"amount"`
 	Currency        string                 `json:"currency"`
+	Address         string                 `json:"address"`
 }
 
 type FundTransactionPayload struct {
-	TransactionPayload
-	FundID uint `json:"amount"`
+	TransactionType models.TransactionType `json:"transaction_type"`
+	Amount          string                 `json:"amount"`
+	Currency        string                 `json:"currency"`
+	AccountCode     models.AccountCode     `json:"account_code"`
 }
 
 type NewUserPayload struct {
@@ -93,7 +96,7 @@ type QuoteResponseData struct {
 	ToCurrency   string  `json:"to_currency"`
 	AmountFrom   uint    `json:"amount_from"`
 	AmountTo     uint    `json:"amount_to"`
-	Rate         float32 `json:"rate"`
+	Rate         float64 `json:"rate"`
 }
 
 type QuoteResponse struct {

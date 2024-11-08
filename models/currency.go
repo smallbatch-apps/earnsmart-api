@@ -4,7 +4,7 @@ type LocalCurrency struct {
 	Name     string
 	Symbol   string
 	Decimals uint
-	LedgerID uint
+	LedgerID uint32
 }
 
 var AllCurrencies = map[string]LocalCurrency{
@@ -12,19 +12,19 @@ var AllCurrencies = map[string]LocalCurrency{
 	"AVAX":  {Name: "AVAX", Symbol: "AVAX", Decimals: 18, LedgerID: 2},
 	"BAT":   {Name: "Basic Attention Token", Symbol: "BAT", Decimals: 18, LedgerID: 3},
 	"BNB":   {Name: "BNB", Symbol: "BNB", Decimals: 18, LedgerID: 4},
-	"BTC":   {Name: "Bitcoin", Symbol: "BTC", Decimals: 18, LedgerID: 5},
+	"BTC":   {Name: "Bitcoin", Symbol: "BTC", Decimals: 8, LedgerID: 5},
 	"DAI":   {Name: "DAI", Symbol: "DAI", Decimals: 18, LedgerID: 6},
-	"DOT":   {Name: "Polkadot", Symbol: "DOT", Decimals: 18, LedgerID: 7},
+	"DOT":   {Name: "Polkadot", Symbol: "DOT", Decimals: 10, LedgerID: 7},
 	"ETH":   {Name: "Ether", Symbol: "ETH", Decimals: 18, LedgerID: 8},
-	"HBAR":  {Name: "Hedera HBAR", Symbol: "HBAR", Decimals: 18, LedgerID: 9},
+	"HBAR":  {Name: "Hedera HBAR", Symbol: "HBAR", Decimals: 8, LedgerID: 9},
 	"LINK":  {Name: "LINK", Symbol: "LINK", Decimals: 24, LedgerID: 10},
 	"MATIC": {Name: "MATIC", Symbol: "MATIC", Decimals: 18, LedgerID: 11},
-	"SOL":   {Name: "Solana", Symbol: "SOL", Decimals: 18, LedgerID: 12},
-	"TRX":   {Name: "TRX", Symbol: "TRX", Decimals: 18, LedgerID: 13},
+	"SOL":   {Name: "Solana", Symbol: "SOL", Decimals: 9, LedgerID: 12},
+	"TRX":   {Name: "TRX", Symbol: "TRX", Decimals: 6, LedgerID: 13},
 	"UNI":   {Name: "Uniswap", Symbol: "UNI", Decimals: 18, LedgerID: 14},
-	"USDT":  {Name: "USDT", Symbol: "USDT", Decimals: 18, LedgerID: 15},
-	"USDC":  {Name: "USDC", Symbol: "USDC", Decimals: 18, LedgerID: 16},
-	"XRP":   {Name: "Ripple", Symbol: "XRP", Decimals: 18, LedgerID: 17},
+	"USDT":  {Name: "USDT", Symbol: "USDT", Decimals: 6, LedgerID: 15},
+	"USDC":  {Name: "USDC", Symbol: "USDC", Decimals: 6, LedgerID: 16},
+	"XRP":   {Name: "Ripple", Symbol: "XRP", Decimals: 6, LedgerID: 17},
 }
 
 var LedgerCurrency = map[uint32]string{
@@ -58,7 +58,7 @@ var LedgerCurrency = map[uint32]string{
 // 	type Alias Currency
 
 // 	return json.Marshal(&struct {
-// 		ID       uint   `json:"id"`
+// 		ID       uint64   `json:"id"`
 // 		Name     string `json:"name"`
 // 		Symbol   string `json:"symbol"`
 // 		Decimals uint   `json:"decimals"`

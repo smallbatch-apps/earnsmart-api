@@ -1,34 +1,30 @@
 package controllers
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
-	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 )
 
 type FundController struct {
-	service *services.FundService
+	services *services.Services
 }
 
-func NewFundController(service *services.FundService) *FundController {
-	return &FundController{service: service}
+func NewFundController(services *services.Services) *FundController {
+	return &FundController{services}
 }
 
 func (c *FundController) ListFunds(w http.ResponseWriter, r *http.Request) {
-	funds, err := c.service.ListFunds()
+	funds, err := c.services.Fund.ListFunds()
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	response := schema.FundsResponse{Status: "success", Funds: funds}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	utils.RespondOk(w, "funds", funds)
 }
 
 func (c *FundController) GetFund(w http.ResponseWriter, r *http.Request) {
@@ -37,17 +33,12 @@ func (c *FundController) GetFund(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	fund, err := c.service.GetFund(uint(id))
+	fund, err := c.services.Fund.GetFund(uint(id))
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	response := schema.FundResponse{Status: "success", Fund: fund}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-
+	utils.RespondOk(w, "fund", fund)
 }

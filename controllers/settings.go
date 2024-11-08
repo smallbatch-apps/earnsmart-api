@@ -8,14 +8,15 @@ import (
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 )
 
 type SettingController struct {
-	service *services.SettingService
+	services *services.Services
 }
 
-func NewSettingController(service *services.SettingService) *SettingController {
-	return &SettingController{service: service}
+func NewSettingController(services *services.Services) *SettingController {
+	return &SettingController{services}
 }
 
 func (c *SettingController) ListSettings(w http.ResponseWriter, r *http.Request) {
@@ -26,17 +27,13 @@ func (c *SettingController) ListSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	settings, err := c.service.GetAll(userID)
-
+	settings, err := c.services.Setting.GetAll(userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	response := schema.SettingsResponse{Status: "ok", Settings: settings}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	utils.RespondOk(w, "settings", settings)
 }
 
 func (c *SettingController) EditSetting(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +52,7 @@ func (c *SettingController) EditSetting(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	setting, err := c.service.GetSetting(userID, payload.Setting)
+	setting, err := c.services.Setting.GetSetting(userID, payload.Setting)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -67,15 +64,11 @@ func (c *SettingController) EditSetting(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	err = c.service.SetSetting(userID, payload.Setting, payload.Value)
+	err = c.services.Setting.SetSetting(userID, payload.Setting, payload.Value)
 
 	if err == nil {
 		setting.Value = payload.Value
 	}
 
-	response := schema.SettingResponse{Status: "ok", Setting: setting}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	utils.RespondOk(w, "setting", setting)
 }

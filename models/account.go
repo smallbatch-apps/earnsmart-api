@@ -33,7 +33,7 @@ const (
 
 type Account struct {
 	CustomModel
-	UserID      uint        `json:"user_id" gorm:"type:uuid"`
+	OwnableModel
 	Currency    string      `json:"currency"`
 	AccountCode AccountCode `json:"account_code" gorm:"type:int"`
 }
@@ -42,7 +42,7 @@ func (account Account) MarshalJSON() ([]byte, error) {
 	type Alias Account
 
 	return json.Marshal(&struct {
-		ID          uint   `json:"id"`
+		ID          uint64 `json:"id"`
 		Currency    string `json:"currency"`
 		AccountCode uint   `json:"account_code"`
 		Alias
@@ -52,6 +52,10 @@ func (account Account) MarshalJSON() ([]byte, error) {
 		AccountCode: uint(account.AccountCode),
 		Alias:       (Alias)(account),
 	})
+}
+
+func (account Account) TbID() tbt.Uint128 {
+	return tbt.ToUint128(account.ID)
 }
 
 var currencies = [...]string{

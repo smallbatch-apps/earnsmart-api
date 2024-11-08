@@ -1,13 +1,10 @@
 package services
 
 import (
-	"errors"
-	"log"
-	"math"
-	"math/big"
+	"fmt"
 
+	"github.com/shopspring/decimal"
 	"github.com/smallbatch-apps/earnsmart-api/models"
-	"github.com/smallbatch-apps/earnsmart-api/utils"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 	"gorm.io/gorm"
@@ -17,172 +14,217 @@ type TransactionService struct {
 	*BaseService
 }
 
-// Convert float to fixed-point integer representation with 24 decimal places
-func floatToUint128(amount float64) tbt.Uint128 {
-	precision := math.Pow10(24) // Fixed precision factor (24 decimal places)
-	intAmount := uint64(amount * precision)
-	return tbt.ToUint128(intAmount)
-}
-
-func uint128ToFloat(amount tbt.Uint128) float64 {
-	precision := new(big.Float).SetFloat64(math.Pow10(24)) // Fixed precision factor (24 decimal places)
-	intAmount := new(big.Int).SetBytes(amount[:])
-
-	amountBig := new(big.Float).SetInt(intAmount)
-	amountBig.Quo(amountBig, precision)
-
-	result, _ := amountBig.Float64()
-	return result
-}
-
 func NewTransactionService(db *gorm.DB, tbClient tb.Client) *TransactionService {
 	return &TransactionService{
 		BaseService: NewBaseService(db, tbClient),
 	}
 }
 
-func (s *TransactionService) CreateDeposit(account models.Account, amount tbt.Uint128, currency string) ([]tbt.TransferEventResult, error) {
-
-	localCurrency := models.AllCurrencies[currency]
-	priceService := NewPriceService(s.db, s.tbClient)
+func (s *TransactionService) CreateSubscription(userID uint64, amount string, currency string, accountCode models.AccountCode) (models.Transaction, error) {
 	accountService := NewAccountService(s.db, s.tbClient)
-	amountPrice, _ := priceService.GetAmountPrice(currency, amount)
-	adminWallet, err := accountService.GetTreasuryWallet(currency)
+	transferService := NewTransferService(s.db, s.tbClient)
 
+	amountDecimal, err := decimal.NewFromString(amount)
 	if err != nil {
-		return nil, errors.New("admin wallet not found")
+		return models.Transaction{}, err
 	}
-
-	transfers := []tbt.Transfer{
-		{
-			ID:              models.GenerateUUID(),
-			DebitAccountID:  adminWallet,
-			CreditAccountID: utils.ToUint128(account.ID),
-			Amount:          amount,
-			Code:            models.TransferCodeDeposit,
-			Ledger:          uint32(localCurrency.LedgerID),
-			UserData128:     floatToUint128(amountPrice),
-		},
-	}
-
-	transferResults, err := s.tbClient.CreateTransfers(transfers)
-
+	account, err := accountService.GetOrCreateAccount(models.Account{
+		AccountCode:  accountCode,
+		Currency:     currency,
+		OwnableModel: models.OwnableModel{UserID: userID},
+	})
 	if err != nil {
-		log.Println("error creating deposit", err)
-		return nil, err
+		return models.Transaction{}, err
 	}
 
-	log.Println("deposit created", transferResults)
-	s.LogActivity(models.ActivityTypeUser, "Creating fund account", account.UserID)
-	return transferResults, nil
+	transferID, err := transferService.CreateSubscribeTransfer(account, tbt.BigIntToUint128(*amountDecimal.BigInt()), currency)
+	if err != nil {
+		return models.Transaction{}, err
+	}
+
+	transaction := models.Transaction{
+		Type:         models.TransactionTypeRedeem,
+		Status:       models.TransactionStatusConfirmed,
+		Amount:       amountDecimal,
+		Currency:     currency,
+		TransferID:   transferID.String(),
+		OwnableModel: models.OwnableModel{UserID: userID},
+	}
+
+	err = s.db.Create(&transaction).Error
+	if err != nil {
+		return models.Transaction{}, nil
+	}
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Create new fund subscription for %s%s", amountDecimal, currency), userID)
+	return transaction, err
 }
 
-func (s *TransactionService) CreateWithdrawal(account models.Account, amount tbt.Uint128, currency string) ([]tbt.TransferEventResult, error) {
+func (s *TransactionService) CreateRedemption(userID uint64, amount string, currency string, accountCode models.AccountCode) (models.Transaction, error) {
+	accountService := NewAccountService(s.db, s.tbClient)
+	transferService := NewTransferService(s.db, s.tbClient)
 
-	localCurrency := models.AllCurrencies[currency]
+	amountDecimal, err := decimal.NewFromString(amount)
+	if err != nil {
+		return models.Transaction{}, err
+	}
+	account, err := accountService.GetOrCreateAccount(models.Account{
+		AccountCode:  accountCode,
+		Currency:     currency,
+		OwnableModel: models.OwnableModel{UserID: userID},
+	})
+	if err != nil {
+		return models.Transaction{}, err
+	}
+
+	transferID, err := transferService.CreateRedeemTransfer(account, tbt.BigIntToUint128(*amountDecimal.BigInt()), currency)
+	if err != nil {
+		return models.Transaction{}, err
+	}
+
+	transaction := models.Transaction{
+		OwnableModel: models.OwnableModel{UserID: userID},
+		Type:         models.TransactionTypeRedeem,
+		Status:       models.TransactionStatusConfirmed,
+		Amount:       amountDecimal,
+		Currency:     currency,
+		TransferID:   transferID.String(),
+	}
+
+	err = s.db.Create(&transaction).Error
+	if err != nil {
+		return models.Transaction{}, nil
+	}
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Redeem %s%s from fund", amountDecimal, currency), userID)
+	return transaction, nil
+}
+
+func (s *TransactionService) CreatePendingDeposit(userID uint64, amount string, depositAddress string, currency string) (models.Transaction, error) {
 	priceService := NewPriceService(s.db, s.tbClient)
+	transferService := NewTransferService(s.db, s.tbClient)
 	accountService := NewAccountService(s.db, s.tbClient)
 
-	if !accountService.AccountHasSufficientBalance(account, amount) {
-		return nil, errors.New("insufficient balance")
-	}
-
-	amountPrice, _ := priceService.GetAmountPrice(currency, amount)
-	adminWallet, err := accountService.GetTreasuryWallet(currency)
+	amountDecimal, err := decimal.NewFromString(amount)
 	if err != nil {
-		return nil, errors.New("admin wallet not found")
+		return models.Transaction{}, err
 	}
 
-	transfers := []tbt.Transfer{
-		{
-			ID:              models.GenerateUUID(),
-			DebitAccountID:  utils.ToUint128(account.ID),
-			CreditAccountID: adminWallet,
-			Amount:          amount,
-			Ledger:          uint32(localCurrency.LedgerID),
-			UserData128:     floatToUint128(float64(amountPrice)),
-			Code:            models.TransferCodeWithdraw,
-		},
-	}
-
-	transferResults, err := s.tbClient.CreateTransfers(transfers)
-
+	account, err := accountService.GetOrCreateAccount(models.Account{
+		AccountCode:  models.AccountCodeWallet,
+		Currency:     currency,
+		OwnableModel: models.OwnableModel{UserID: userID},
+	})
 	if err != nil {
-		return nil, err
+		return models.Transaction{}, err
 	}
 
-	return transferResults, nil
+	transferID, err := transferService.CreateDepositTransfer(account, tbt.BigIntToUint128(*amountDecimal.BigInt()), currency)
+	if err != nil {
+		return models.Transaction{}, err
+	}
+
+	transaction := models.Transaction{
+		Type:         models.TransactionTypeWithdraw,
+		Status:       models.TransactionStatusPending,
+		Amount:       amountDecimal,
+		Currency:     currency,
+		TransferID:   transferID.String(),
+		Address:      depositAddress,
+		OwnableModel: models.OwnableModel{UserID: userID},
+	}
+
+	err = s.db.Create(&transaction).Error
+	if err != nil {
+		return models.Transaction{}, err
+	}
+	amountFloat, err := priceService.AmountToFloat(currency, transaction.AmountAsUint128())
+	if err != nil {
+		return models.Transaction{}, err
+	}
+
+	s.LogActivity(models.ActivityTypeUser, fmt.Sprintf("Create pending deposit: %f%s", amountFloat, currency), userID)
+	return transaction, nil
 }
 
-func (s *TransactionService) CreateTransfer(creditAccount models.Account, debitAccount models.Account, amount tbt.Uint128, currency string, code uint16) ([]tbt.TransferEventResult, error) {
-
+func (s *TransactionService) CreatePendingWithdrawal(userID uint64, amount string, withdrawalAddress string, currency string) (models.Transaction, error) {
 	priceService := NewPriceService(s.db, s.tbClient)
+	transferService := NewTransferService(s.db, s.tbClient)
 	accountService := NewAccountService(s.db, s.tbClient)
 
-	if !accountService.AccountHasSufficientBalance(debitAccount, amount) {
-		return nil, errors.New("insufficient balance")
-	}
-
-	localCurrency := models.AllCurrencies[currency]
-
-	amountPrice, _ := priceService.GetAmountPrice(currency, amount)
-
-	transfers := []tbt.Transfer{
-		{
-			ID:              models.GenerateUUID(),
-			CreditAccountID: tbt.ToUint128(uint64(creditAccount.ID)),
-			DebitAccountID:  tbt.ToUint128(uint64(debitAccount.ID)),
-			Amount:          amount,
-			Ledger:          uint32(localCurrency.LedgerID),
-			UserData128:     floatToUint128(float64(amountPrice)),
-			UserData32:      uint32(models.TransactionTypeWithdraw),
-			Code:            code,
-		},
-	}
-
-	transferResults, err := s.tbClient.CreateTransfers(transfers)
-
+	amountDecimal, err := decimal.NewFromString(amount)
 	if err != nil {
-		log.Println("error creating transfer", err)
-		return nil, err
+		return models.Transaction{}, err
 	}
 
-	return transferResults, nil
+	account, err := accountService.GetOrCreateAccount(models.Account{
+		AccountCode:  models.AccountCodeWallet,
+		Currency:     currency,
+		OwnableModel: models.OwnableModel{UserID: userID},
+	})
+	if err != nil {
+		return models.Transaction{}, err
+	}
+
+	transferID, _ := transferService.CreateDepositTransfer(account, tbt.BigIntToUint128(*amountDecimal.BigInt()), currency)
+
+	transaction := models.Transaction{
+		Type:       models.TransactionTypeWithdraw,
+		Status:     models.TransactionStatusPending,
+		Amount:     amountDecimal,
+		Currency:   currency,
+		TransferID: transferID.String(),
+		Address:    withdrawalAddress,
+	}
+
+	err = s.db.Create(&transaction).Error
+	if err != nil {
+		return models.Transaction{}, err
+	}
+	amountFloat, err := priceService.AmountToFloat(currency, transaction.AmountAsUint128())
+	if err != nil {
+		return models.Transaction{}, err
+	}
+
+	s.LogActivity(models.ActivityTypeUser, fmt.Sprintf("Creating pending withdrawal: %f%s", amountFloat, currency), userID)
+	return transaction, nil
 }
 
-type AccountTransferWithID struct {
-	tbt.Transfer
-	AmountUSD float64
-	Currency  string
+func (s *TransactionService) ApproveTransaction(transaction models.Transaction) (models.Transaction, error) {
+	transferService := NewTransferService(s.db, s.tbClient)
+
+	err := s.db.Model(&transaction).Updates(models.Transaction{Status: models.TransactionStatusConfirmed}).Error
+	if err != nil {
+		return transaction, err
+	}
+	transfer, err := transferService.GetTransferByID(transaction.TransferIDAsUint128())
+	if err != nil {
+		return transaction, err
+	}
+
+	_, err = transferService.ConfirmTransfer(transfer)
+	if err != nil {
+		return transaction, err
+	}
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Approved transaction: %s%s", transaction.Amount, transaction.Currency), transaction.UserID)
+	return transaction, err
 }
 
-func (s *TransactionService) GetAllTransactions(accountIds []tbt.Uint128) ([]AccountTransferWithID, error) {
-	var filter = tbt.AccountFilter{
-		AccountID:    tbt.ToUint128(0),
-		TimestampMin: 0,
-		TimestampMax: 0,
-		Limit:        10,
-		Flags: tbt.AccountFilterFlags{
-			Debits:  true,
-			Credits: true,
-		}.ToUint32(),
+func (s *TransactionService) DeclineTransaction(transaction models.Transaction, status models.TransactionStatus) (models.Transaction, error) {
+	transferService := NewTransferService(s.db, s.tbClient)
+
+	err := s.db.Model(&transaction).Updates(models.Transaction{Status: status}).Error
+	if err != nil {
+		return transaction, err
 	}
 
-	var allTransfers []AccountTransferWithID
-
-	for _, accountId := range accountIds {
-		filter.AccountID = accountId
-		transfers, _ := s.tbClient.GetAccountTransfers(filter)
-
-		for _, transfer := range transfers {
-			transferWithID := AccountTransferWithID{
-				Transfer:  transfer,
-				AmountUSD: uint128ToFloat(transfer.UserData128),
-				Currency:  models.LedgerCurrency[transfer.Ledger],
-			}
-			allTransfers = append(allTransfers, transferWithID)
-		}
-
+	transfer, err := transferService.GetTransferByID(transaction.TransferIDAsUint128())
+	if err != nil {
+		return transaction, err
 	}
-	return allTransfers, nil
+
+	_, err = transferService.VoidTransfer(transfer)
+	if err != nil {
+		return transaction, err
+	}
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Declined transaction: %s%s", transaction.Amount, transaction.Currency), transaction.UserID)
+	return transaction, err
 }

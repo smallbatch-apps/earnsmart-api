@@ -1,20 +1,19 @@
 package controllers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/smallbatch-apps/earnsmart-api/middleware"
-	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 )
 
 type ActivityController struct {
-	service *services.ActivityService
+	services *services.Services
 }
 
-func NewActivityController(service *services.ActivityService) *ActivityController {
-	return &ActivityController{service: service}
+func NewActivityController(services *services.Services) *ActivityController {
+	return &ActivityController{services}
 }
 
 func (c *ActivityController) ListActivities(w http.ResponseWriter, r *http.Request) {
@@ -25,15 +24,12 @@ func (c *ActivityController) ListActivities(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	activities, err := c.service.GetAll(userID)
+	activities, err := c.services.Activity.GetAll(userID)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	response := schema.ActivitiesResponse{Status: "ok", Activities: activities}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	utils.RespondOk(w, "activities", activities)
 }

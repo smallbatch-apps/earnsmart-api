@@ -13,7 +13,7 @@ type Price struct {
 	Currency  string  `gorm:"not null;index" json:"currency"`
 	IsCurrent bool    `gorm:"not null;default:false;index" json:"is_current"`
 	Period    uint    `gorm:"not null;index" json:"period"`
-	Rate      float32 `gorm:"not null;index" json:"rate"`
+	Rate      float64 `gorm:"not null;index" json:"rate"`
 }
 
 // func (price Price) MarshalJSON() ([]byte, error) {

@@ -13,24 +13,18 @@ const (
 
 type Activity struct {
 	CustomModel
-	Type    ActivityType
-	Message string
-	UserID  uint `json:"user_id" gorm:"index"`
-	User    User
+	OwnableModel
+	Type    ActivityType `json:"type"`
+	Message string       `json:"message"`
 }
 
 func (activity Activity) MarshalJSON() ([]byte, error) {
 	type Alias Activity
-
 	return json.Marshal(&struct {
-		ID      uint   `json:"id"`
-		Type    string `json:"type"`
-		Message string `json:"message"`
+		Type string `json:"type"`
 		Alias
 	}{
-		ID:      activity.ID,
-		Type:    string(activity.Type),
-		Message: activity.Message,
-		Alias:   (Alias)(activity),
+		Type:  string(activity.Type),
+		Alias: (Alias)(activity),
 	})
 }

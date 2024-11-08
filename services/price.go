@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/shopspring/decimal"
 	"github.com/smallbatch-apps/earnsmart-api/models"
 
 	tb "github.com/tigerbeetle/tigerbeetle-go"
@@ -28,32 +29,54 @@ func NewPriceService(db *gorm.DB, tbClient tb.Client) *PriceService {
 
 func (s *PriceService) GetPrices() ([]models.Price, error) {
 	var prices []models.Price
-	err := s.db.Where("is_current = ?", true).Order("currency DESC").Find(&prices).Error
-	if err != nil {
-		return nil, err
-	}
-	return prices, nil
+	err := s.db.Where("is_current = ?", true).Order("currency ASC").Find(&prices).Error
+
+	return prices, err
 }
 
 func (s *PriceService) GetPriceForCurrency(currency string) (models.Price, error) {
 	var price models.Price
 	query := models.Price{Currency: currency, IsCurrent: true}
-	err := s.db.Where(query).Order("currency DESC").First(&price).Error
-	if err != nil {
-		return models.Price{}, err
-	}
-	return price, nil
+	err := s.db.Where(query).Order("currency ASC").First(&price).Error
+
+	return price, err
 }
 
 func (s *PriceService) GetPricesForPeriod(currency string, period uint) ([]models.Price, error) {
 	var prices []models.Price
-	if err := s.db.Where("currency = ? AND period = ?", currency, period).Find(&prices).Error; err != nil {
-		return nil, err
-	}
-	return prices, nil
+	err := s.db.Where("currency = ? AND period = ?", currency, period).Find(&prices).Error
+	return prices, err
 }
 
-func (s *PriceService) RequestForQuote(fromCurrency string, toCurrency string, amount uint) {
+func (s *PriceService) RequestForQuote(fromCurrency string, toCurrency string, amount *big.Int) (*big.Int, decimal.Decimal, error) {
+	// Convert from base units to float
+	fromAmount := new(big.Float).SetInt(amount)
+	decimals := models.AllCurrencies[fromCurrency].Decimals
+	divisor := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil))
+	fromAmount.Quo(fromAmount, divisor)
+
+	priceFrom, err := s.GetPriceForCurrency(fromCurrency)
+	if err != nil {
+		return nil, decimal.Decimal{}, err
+	}
+
+	priceTo, err := s.GetPriceForCurrency(toCurrency)
+	if err != nil {
+		return nil, decimal.Decimal{}, err
+	}
+
+	// Calculate the conversion
+	amountFromUSD := new(big.Float).Mul(fromAmount, big.NewFloat(float64(priceFrom.Rate)))
+	amountInTargetCurrency := new(big.Float).Quo(amountFromUSD, big.NewFloat(float64(priceTo.Rate)))
+
+	// Convert back to base units for target currency
+	targetDecimals := models.AllCurrencies[toCurrency].Decimals
+	multiplier := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(targetDecimals)), nil))
+	result := new(big.Float).Mul(amountInTargetCurrency, multiplier)
+
+	finalAmount := new(big.Int)
+	result.Int(finalAmount)
+	return finalAmount, decimal.Decimal{}, nil
 }
 
 func (s *PriceService) UpdatePrices() error {
@@ -129,7 +152,7 @@ func (s *PriceService) UpdatePrices() error {
 			Currency:  symbol,
 			IsCurrent: true,
 			Period:    uint(models.CurrencyPeriod1h),
-			Rate:      float32(price),
+			Rate:      price,
 		})
 	}
 
@@ -166,15 +189,23 @@ func (s *PriceService) GetAmountPrice(currency string, amount tbt.Uint128) (floa
 		return 0, err
 	}
 
-	decimals := uint64(models.AllCurrencies[currency].Decimals)
+	shiftedAmountFloat, err := s.AmountToFloat(currency, amount)
+	if err != nil {
+		return 0, err
+	}
 
+	amountUSD := float64(price.Rate) * shiftedAmountFloat
+
+	return amountUSD, nil
+}
+
+func (s *PriceService) AmountToFloat(currency string, amount tbt.Uint128) (float64, error) {
+	decimals := uint64(models.AllCurrencies[currency].Decimals)
 	decimalsBigInt := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
 	amountBigInt := amount.BigInt()
 	shiftedAmount := new(big.Float).Quo(new(big.Float).SetInt(&amountBigInt), new(big.Float).SetInt(decimalsBigInt))
 
 	shiftedAmountFloat, _ := shiftedAmount.Float64()
 
-	amountUSD := float64(price.Rate) * shiftedAmountFloat
-
-	return amountUSD, nil
+	return shiftedAmountFloat, nil
 }

@@ -24,11 +24,11 @@ func (s *BaseService) GetTBClient() tb.Client {
 	return s.tbClient
 }
 
-func (s *BaseService) LogActivity(activityType models.ActivityType, message string, userID uint) (models.Activity, error) {
+func (s *BaseService) LogActivity(activityType models.ActivityType, message string, userID uint64) (models.Activity, error) {
 	activity := models.Activity{
-		Type:    activityType,
-		Message: message,
-		UserID:  userID,
+		Type:         activityType,
+		Message:      message,
+		OwnableModel: models.OwnableModel{UserID: userID},
 	}
 
 	err := s.db.Create(&activity).Error
