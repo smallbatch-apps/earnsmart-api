@@ -36,7 +36,7 @@ func (c *AllocationController) ListAllocations(w http.ResponseWriter, r *http.Re
 	utils.RespondOk(w, "allocations", allocations)
 }
 
-func (c *AllocationController) EditAllocation(w http.ResponseWriter, r *http.Request) {
+func (c *AllocationController) UpdateAllocation(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDFromContext(r.Context())
 	if err != nil {
 		utils.RespondError(w, err, http.StatusUnauthorized)
@@ -75,7 +75,7 @@ func (c *AllocationController) EditAllocation(w http.ResponseWriter, r *http.Req
 	utils.RespondOk(w, "allocation", updatedAllocation)
 }
 
-func (c *AllocationController) AddAllocation(w http.ResponseWriter, r *http.Request) {
+func (c *AllocationController) CreateAllocation(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDFromContext(r.Context())
 	if err != nil {
 		utils.RespondError(w, err, http.StatusUnauthorized)
@@ -90,7 +90,7 @@ func (c *AllocationController) AddAllocation(w http.ResponseWriter, r *http.Requ
 	}
 	payload.UserID = userID
 
-	allocation, err := c.services.Allocation.AddAllocation(&payload)
+	allocation, err := c.services.Allocation.CreateAllocation(&payload)
 	if err != nil {
 		utils.RespondError(w, err, http.StatusInternalServerError)
 		return

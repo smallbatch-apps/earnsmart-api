@@ -1,9 +1,7 @@
 package models
 
 import (
-	"encoding/json"
 	"math/big"
-	"time"
 
 	"github.com/shopspring/decimal"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
@@ -28,26 +26,6 @@ type Transaction struct {
 	Status     TransactionStatus `json:"status" gorm:"default:1"`
 	Type       TransactionType   `json:"type"`
 	TransferID string            `json:"transfer_id"`
-}
-
-func (activity Transaction) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		ID        uint64 `json:"id"`
-		Type      uint16 `json:"type"`
-		Currency  string `json:"currency"`
-		Address   string `json:"address"`
-		Status    uint16 `json:"status"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
-	}{
-		ID:        activity.ID,
-		Type:      uint16(activity.Type),
-		Currency:  activity.Currency,
-		Address:   activity.Address,
-		Status:    uint16(activity.Status),
-		CreatedAt: activity.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: activity.UpdatedAt.Format(time.RFC3339),
-	})
 }
 
 func (t *Transaction) AmountAsUint128() tbt.Uint128 {

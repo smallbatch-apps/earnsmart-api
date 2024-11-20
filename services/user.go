@@ -18,16 +18,17 @@ func NewUserService(db *gorm.DB, tbClient tb.Client) *UserService {
 	}
 }
 
-func (s *UserService) FindUserByEmail(email string) (models.User, error) {
+func (s *UserService) GetUserByEmail(email string) (models.User, error) {
 	var user models.User
 	err := s.db.Where("email = ?", email).First(&user).Error
 	return user, err
 }
 
-// func (s *UserService) FindUserById(db *gorm.DB, id string) error {
-// 	user := models.User{}
-// 	return s.db.Where("id = ?", id).First(&user).Error
-// }
+func (s *UserService) GetUser(id uint64) (models.User, error) {
+	user := models.User{}
+	err := s.db.First(&user, id).Error
+	return user, err
+}
 
 func (s *UserService) CreateUser(user *models.User) (*models.User, error) {
 	err := s.db.Create(user).Error

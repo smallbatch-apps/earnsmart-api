@@ -16,13 +16,13 @@ func NewActivityService(db *gorm.DB, tbClient tb.Client) *ActivityService {
 	}
 }
 
-func (s *ActivityService) GetAll(userID uint64) ([]models.Activity, error) {
+func (s *ActivityService) ListActivities(userID uint64) ([]models.Activity, error) {
 	var activities []models.Activity
-	err := s.db.Where("user_id = ?", userID).Find(&activities).Error
+	err := s.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&activities).Error
 	return activities, err
 }
 
-func (s *ActivityService) Create(activity models.Activity) error {
+func (s *ActivityService) CreateActivity(activity models.Activity) error {
 	return s.db.Create(&activity).Error
 }
 
@@ -32,7 +32,7 @@ func (s *ActivityService) CreateUserActivity(userID uint64, message string) erro
 		Message:      message,
 		OwnableModel: models.OwnableModel{UserID: userID},
 	}
-	return s.Create(activity)
+	return s.CreateActivity(activity)
 }
 
 func (s *ActivityService) CreateAdminActivity(message string) error {
@@ -40,5 +40,5 @@ func (s *ActivityService) CreateAdminActivity(message string) error {
 		Type:    models.ActivityTypeAdmin,
 		Message: message,
 	}
-	return s.Create(activity)
+	return s.CreateActivity(activity)
 }

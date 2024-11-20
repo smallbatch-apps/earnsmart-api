@@ -21,7 +21,7 @@ const (
 type TransferCode uint16
 
 const (
-	_ TransactionType = iota
+	_ TransferCode = iota
 	TransferCodeDeposit
 	TransferCodeWithdraw
 	TransferCodeSwapFrom

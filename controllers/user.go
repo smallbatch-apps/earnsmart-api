@@ -8,9 +8,12 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/smallbatch-apps/earnsmart-api/errs"
+	"github.com/smallbatch-apps/earnsmart-api/middleware"
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 )
 
 type UserController struct {
@@ -26,11 +29,11 @@ func NewUserController(services *services.Services) *UserController {
 	return &UserController{services}
 }
 
-func (c *UserController) AddUser(w http.ResponseWriter, r *http.Request) {
+func (c *UserController) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var payload schema.NewUserPayload
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		utils.RespondError(w, err, http.StatusBadRequest)
 		return
 	}
 	var user = models.User{
@@ -38,23 +41,29 @@ func (c *UserController) AddUser(w http.ResponseWriter, r *http.Request) {
 		Password: payload.Password,
 		Name:     payload.Name,
 	}
-	err := c.services.User.CreateUser(user)
+	newUser, err := c.services.User.CreateUser(&user)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	response := schema.NewUserResponse{User: user, Status: "ok"}
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-
+	utils.RespondOk(w, "user", newUser)
 }
 
 func (c *UserController) GetUser(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "getting a user\n")
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
+		errs.UserTokenNotValidError(w)
+		return
+	}
+
+	user, err := c.services.User.GetUser(userID)
+	if err != nil {
+		utils.RespondError(w, err, http.StatusNotFound)
+		return
+	}
+	utils.RespondOk(w, "user", user)
 }
 
 func (c *UserController) UpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -68,14 +77,12 @@ func (c *UserController) DeleteUser(w http.ResponseWriter, r *http.Request) {
 func (c *UserController) LogIn(w http.ResponseWriter, r *http.Request) {
 	var payload LogInPayload
 	error_string := "Invalid request payload"
-	w.Header().Add("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
 
-	user, err := c.services.User.FindUserByEmail(payload.Email)
+	user, err := c.services.User.GetUserByEmail(payload.Email)
 
 	if err != nil {
 		http.Error(w, error_string, http.StatusBadRequest)
@@ -104,11 +111,7 @@ func (c *UserController) LogIn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Authorization", "bearer "+tokenString)
-
-	if err := json.NewEncoder(w).Encode(user); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-
+	utils.RespondOk(w, "user", user)
 }
 
 func (c *UserController) LogOut(w http.ResponseWriter, r *http.Request) {

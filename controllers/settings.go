@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/smallbatch-apps/earnsmart-api/middleware"
@@ -9,6 +11,7 @@ import (
 	"github.com/smallbatch-apps/earnsmart-api/schema"
 	"github.com/smallbatch-apps/earnsmart-api/services"
 	"github.com/smallbatch-apps/earnsmart-api/utils"
+	"gorm.io/gorm"
 )
 
 type SettingController struct {
@@ -27,7 +30,7 @@ func (c *SettingController) ListSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	settings, err := c.services.Setting.GetAll(userID)
+	settings, err := c.services.Setting.ListSettings(userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -36,11 +39,11 @@ func (c *SettingController) ListSettings(w http.ResponseWriter, r *http.Request)
 	utils.RespondOk(w, "settings", settings)
 }
 
-func (c *SettingController) EditSetting(w http.ResponseWriter, r *http.Request) {
+func (c *SettingController) UpdateSetting(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDFromContext(r.Context())
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		utils.RespondError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -48,26 +51,25 @@ func (c *SettingController) EditSetting(w http.ResponseWriter, r *http.Request) 
 	err = json.NewDecoder(r.Body).Decode(&payload)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		utils.RespondError(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	setting, err := c.services.Setting.GetSetting(userID, payload.Setting)
+	setting, err := c.services.Setting.GetSetting(userID, payload.Name)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, gorm.ErrRecordNotFound) {
+		utils.RespondError(w, err, http.StatusInternalServerError)
+		return
+	}
 
+	if err == nil && setting.Type != models.SettingTypeUser {
+		http.Error(w, "user cannot modify admin setting", http.StatusForbidden)
+		return
+	}
+
+	setting, err = c.services.Setting.UpdateSetting(userID, payload.Name, payload.Value)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		utils.RespondError(w, err, http.StatusInternalServerError)
 		return
-	}
-
-	if setting.Type != models.SettingTypeUser {
-		http.Error(w, "Invalid setting type", http.StatusUnauthorized)
-		return
-	}
-
-	err = c.services.Setting.SetSetting(userID, payload.Setting, payload.Value)
-
-	if err == nil {
-		setting.Value = payload.Value
 	}
 
 	utils.RespondOk(w, "setting", setting)

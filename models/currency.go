@@ -3,7 +3,7 @@ package models
 type LocalCurrency struct {
 	Name     string
 	Symbol   string
-	Decimals uint
+	Decimals uint32
 	LedgerID uint32
 }
 

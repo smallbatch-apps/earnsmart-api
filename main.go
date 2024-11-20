@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	fmt.Println("Starting server...")
 	godotenv.Load()
 	database.Connect()
 	tbClient, err := database.CreateTigerBeetleClient()
@@ -34,6 +35,12 @@ func main() {
 	adminController := controllers.NewAdminController(services)
 	quoteController := controllers.NewQuoteController(services)
 	activityController := controllers.NewActivityController(services)
+	swapController := controllers.NewSwapController(services)
+
+	publicStack := middleware.CreateStack(
+		middleware.LogRequest,
+		middleware.AddHeaders, // CORS and JSON headers for public API endpoints
+	)
 
 	authedStack := middleware.CreateStack(
 		middleware.LogRequest,
@@ -43,20 +50,20 @@ func main() {
 
 	fmt.Println("Setting up routing")
 	router := http.NewServeMux()
-	router.HandleFunc("POST /auth/login", userController.LogIn)
-	router.HandleFunc("POST /user", userController.AddUser)
+	router.Handle("POST /auth/login", publicStack(http.HandlerFunc(userController.LogIn)))
+	router.Handle("POST /user", publicStack(http.HandlerFunc(userController.CreateUser)))
 	router.HandleFunc("GET /seed", adminController.SeedData)
 	router.HandleFunc("POST /quote", quoteController.GetQuote)
 	routes.RegisterPriceRoutes(router, priceController)
 
 	authedRouter := http.NewServeMux()
 	routes.RegisterAccountRoutes(authedRouter, accountController)
-
 	routes.RegisterFundRoutes(authedRouter, fundController)
 	routes.RegisterTransactionRoutes(authedRouter, transactionController)
 	routes.RegisterSettingRoutes(authedRouter, settingController)
 	routes.RegisterUserRoutes(authedRouter, userController)
 	routes.RegisterActivityRoutes(authedRouter, activityController)
+	routes.RegisterSwapRoutes(authedRouter, swapController)
 
 	router.Handle("/", authedStack(authedRouter))
 

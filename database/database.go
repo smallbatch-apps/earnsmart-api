@@ -1,7 +1,7 @@
 package database
 
 import (
-	"log"
+	"fmt"
 	"os"
 
 	"gorm.io/driver/sqlite"
@@ -12,14 +12,15 @@ import (
 var DB *gorm.DB
 
 func Connect() {
+	fmt.Println("Attempting database connection...")
 	var err error
 	DB, err = gorm.Open(sqlite.Open("api.db"), &gorm.Config{})
 
 	if err != nil {
-		log.Fatal("Failed to connect to database! \n", err.Error())
+		fmt.Printf("Failed to connect to database: %v\n", err)
 		os.Exit(2)
 	}
 
-	log.Println("Connected to the database successfully")
+	fmt.Println("Connected to the database successfully")
 	DB.Logger = logger.Default.LogMode(logger.Info)
 }

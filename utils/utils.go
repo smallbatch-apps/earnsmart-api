@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/shopspring/decimal"
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 )
@@ -71,4 +72,8 @@ func RespondError(w http.ResponseWriter, err error, status int) error {
 		"status": "error",
 		"error":  err.Error(),
 	})
+}
+
+func FormatCurrencyAmount(amount decimal.Decimal, decimals uint32) string {
+	return amount.Shift(-int32(decimals)).StringFixed(2)
 }

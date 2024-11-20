@@ -8,5 +8,5 @@ import (
 
 func RegisterSettingRoutes(mux *http.ServeMux, controller *controllers.SettingController) {
 	mux.HandleFunc("GET /settings", controller.ListSettings)
-	mux.HandleFunc("POST /settings", controller.EditSetting)
+	mux.HandleFunc("POST /settings", controller.UpdateSetting)
 }

@@ -31,7 +31,7 @@ func (c *TransactionController) ListTransactions(w http.ResponseWriter, r *http.
 		return
 	}
 
-	accounts, err := accountService.GetAccounts(models.Account{UserID: userID})
+	accounts, err := accountService.GetAccounts(models.Account{OwnableModel: models.OwnableModel{UserID: userID}})
 	if err != nil {
 		errs.InternalError(w, "Unable to get accounts", "Internal server error")
 		return
@@ -43,13 +43,19 @@ func (c *TransactionController) ListTransactions(w http.ResponseWriter, r *http.
 		return
 	}
 
-	transfers, err := transferService.GetAllTransfers(accountIds)
+	transfers, err := transferService.ListTransfers(accountIds)
 	if err != nil {
 		errs.InternalError(w, "Failed to successfully get transactions", "Internal server error")
 		return
 	}
 
 	utils.RespondOk(w, "transactions", transfers)
+}
+
+type TransactionWithUSD struct {
+	models.Transaction
+	Code      models.TransferCode `json:"code"`
+	AmountUSD float64             `json:"amount_usd"`
 }
 
 func (c *TransactionController) AddFundTransaction(w http.ResponseWriter, r *http.Request) {
@@ -104,19 +110,33 @@ func (c *TransactionController) AddTransaction(w http.ResponseWriter, r *http.Re
 
 	tType := payload.TransactionType
 	var transaction models.Transaction
+	var transferCode models.TransferCode
 
 	if tType == models.TransactionTypeDeposit {
 		transaction, err = c.services.Transaction.CreatePendingDeposit(userID, payload.Amount, payload.Address, payload.Currency)
+		transferCode = models.TransferCodeDeposit
 		if err != nil {
 			utils.RespondError(w, err, http.StatusInternalServerError)
 			return
 		}
 	} else if tType == models.TransactionTypeWithdraw {
 		transaction, err = c.services.Transaction.CreatePendingWithdrawal(userID, payload.Amount, payload.Address, payload.Currency)
+		transferCode = models.TransferCodeWithdraw
 		if err != nil {
 			utils.RespondError(w, err, http.StatusInternalServerError)
 			return
 		}
+	}
+
+	amountUSD, err := c.services.Price.GetAmountPrice(payload.Currency, transaction.AmountAsUint128())
+	if err != nil {
+		utils.RespondError(w, err, http.StatusInternalServerError)
+		return
+	}
+	fullTransaction := TransactionWithUSD{
+		Transaction: transaction,
+		Code:        transferCode,
+		AmountUSD:   amountUSD,
 	}
 
 	watcher := &services.TransactionWatcher{
@@ -125,5 +145,5 @@ func (c *TransactionController) AddTransaction(w http.ResponseWriter, r *http.Re
 	watcher.WatchTransaction(transaction)
 
 	w.WriteHeader(http.StatusCreated)
-	utils.RespondOk(w, "transaction", transaction)
+	utils.RespondOk(w, "transactions", []TransactionWithUSD{fullTransaction})
 }

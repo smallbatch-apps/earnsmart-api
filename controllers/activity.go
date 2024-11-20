@@ -24,7 +24,7 @@ func (c *ActivityController) ListActivities(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	activities, err := c.services.Activity.GetAll(userID)
+	activities, err := c.services.Activity.ListActivities(userID)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

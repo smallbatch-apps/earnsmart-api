@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/smallbatch-apps/earnsmart-api/services"
@@ -16,7 +17,8 @@ func NewPriceController(services *services.Services) *PriceController {
 }
 
 func (c *PriceController) ListPrices(w http.ResponseWriter, r *http.Request) {
-	prices, err := c.services.Price.GetPrices()
+	prices, err := c.services.Price.ListPrices()
+	log.Printf("prices: %+v", prices[0])
 	if err != nil {
 		utils.RespondError(w, err, http.StatusInternalServerError)
 		return

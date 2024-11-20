@@ -30,7 +30,7 @@ func (s *AdminService) SafeToMigrate() bool {
 
 func (s *AdminService) SeedData() error {
 
-	s.db.AutoMigrate(&models.Account{}, &models.Activity{}, &models.Fund{}, &models.Price{}, &models.Setting{}, &models.Transaction{}, &models.User{})
+	s.db.AutoMigrate(&models.Account{}, &models.AllocationPlan{}, &models.Activity{}, &models.Fund{}, &models.Price{}, &models.Setting{}, &models.Swap{}, &models.Transaction{}, &models.User{})
 
 	priceService := NewPriceService(s.db, s.tbClient)
 	accountService := NewAccountService(s.db, s.tbClient)
@@ -38,7 +38,7 @@ func (s *AdminService) SeedData() error {
 
 	log.Println("Updating prices")
 
-	priceService.UpdatePrices()
+	priceService.UpdatePrices(models.CurrencyPeriod1m)
 
 	log.Println("Creating test users")
 
@@ -70,7 +70,7 @@ func (s *AdminService) SeedData() error {
 	testUser := models.User{
 		Name:     "Test User",
 		Email:    "test@earnsmart.com",
-		Password: "123456",
+		Password: "admin123456",
 	}
 
 	err = s.db.Create(&testUser).Error

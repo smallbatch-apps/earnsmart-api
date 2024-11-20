@@ -19,7 +19,7 @@ func NewFundService(db *gorm.DB, tbClient tb.Client) *FundService {
 
 func (s *FundService) GetFund(id uint) (models.Fund, error) {
 	fund := models.Fund{}
-	if err := s.db.Where("id = ?", id).First(&fund).Error; err != nil {
+	if err := s.db.First(&fund, id).Error; err != nil {
 		return fund, err
 	}
 	return fund, nil

@@ -1,10 +1,12 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/shopspring/decimal"
 	"github.com/smallbatch-apps/earnsmart-api/models"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 	"gorm.io/gorm"
@@ -19,7 +21,7 @@ func NewSwapService(db *gorm.DB, tbClient tb.Client) *SwapService {
 	return &SwapService{BaseService: NewBaseService(db, tbClient)}
 }
 
-func (s *SwapService) MakeSwap(userID uint64, amountFrom string, currencyFrom string, amountTo string, currencyTo string, rate float64) (models.Swap, error) {
+func (s *SwapService) CreateSwap(userID uint64, amountFrom string, currencyFrom string, amountTo string, currencyTo string, rate float64) (models.Swap, error) {
 	priceService := NewPriceService(s.db, s.tbClient)
 	fromTreasury, toTreasury, fromUser, toUser, err := s.getSwapWallets(userID, currencyFrom, currencyTo)
 	if err != nil {
@@ -52,6 +54,11 @@ func (s *SwapService) MakeSwap(userID uint64, amountFrom string, currencyFrom st
 	amountFromPrice, _ := priceService.GetAmountPrice(currencyFrom, amountFrom128)
 	amountToPrice, _ := priceService.GetAmountPrice(currencyTo, amountTo128)
 
+	accountService := NewAccountService(s.db, s.tbClient)
+	if !accountService.AccountHasSufficientBalance(fromUser, amountFrom128) {
+		return models.Swap{}, errors.New("insufficient balance")
+	}
+
 	transfers := []tbt.Transfer{
 		{
 			ID:              fromTransferID,
@@ -60,7 +67,7 @@ func (s *SwapService) MakeSwap(userID uint64, amountFrom string, currencyFrom st
 			Amount:          amountFrom128,
 			CreditAccountID: fromTreasury.TbID(),
 			Flags:           tbt.TransferFlags{Linked: true}.ToUint16(),
-			UserData128:     floatToUint128(amountFromPrice),
+			UserData128:     PriceToUint128(amountFromPrice),
 		},
 		{
 			ID:              toTransferID,
@@ -69,7 +76,7 @@ func (s *SwapService) MakeSwap(userID uint64, amountFrom string, currencyFrom st
 			DebitAccountID:  toTreasury.TbID(),
 			CreditAccountID: toUser.TbID(),
 			Flags:           tbt.TransferFlags{Linked: true}.ToUint16(),
-			UserData128:     floatToUint128(amountToPrice),
+			UserData128:     PriceToUint128(amountToPrice),
 		},
 	}
 
@@ -90,14 +97,24 @@ func (s *SwapService) MakeSwap(userID uint64, amountFrom string, currencyFrom st
 	}
 
 	err = s.db.Create(&swap).Error
-	s.LogActivity(models.ActivityTypeUser, fmt.Sprintf("Created swap: %s%s to %s%s", amountFromDecimal, currencyFrom, amountToDecimal, currencyTo), userID)
+
+	formattedFromAmount := utils.FormatCurrencyAmount(amountFromDecimal, models.AllCurrencies[currencyFrom].Decimals)
+	formattedToAmount := utils.FormatCurrencyAmount(amountToDecimal, models.AllCurrencies[currencyTo].Decimals)
+	s.LogActivity(models.ActivityTypeUser, fmt.Sprintf("Created swap: %s %s to %s %s", formattedFromAmount, currencyFrom, formattedToAmount, currencyTo), userID)
+
 	return swap, err
 }
 
-func (s *SwapService) GetSwaps(userID uint64) ([]models.Swap, error) {
+func (s *SwapService) ListSwaps(userID uint64) ([]models.Swap, error) {
 	var swaps []models.Swap
 	err := s.db.Where("user_id = ?", userID).Find(&swaps).Order("created_at DESC").Error
 	return swaps, err
+}
+
+func (s *SwapService) GetSwap(id uint64) (models.Swap, error) {
+	var swap models.Swap
+	err := s.db.First(&swap, id).Error
+	return swap, err
 }
 
 func (s *SwapService) getSwapWallets(userID uint64, currencyFrom, currencyTo string) (fromTreasury, toTreasury, fromUser, toUser models.Account, err error) {

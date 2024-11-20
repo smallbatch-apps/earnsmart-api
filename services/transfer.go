@@ -1,12 +1,14 @@
 package services
 
 import (
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
-	"math/big"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
@@ -19,21 +21,33 @@ type TransferService struct {
 }
 
 // Convert float to fixed-point integer representation with 24 decimal places
-func floatToUint128(amount float64) tbt.Uint128 {
-	precision := math.Pow10(24) // Fixed precision factor (24 decimal places)
-	intAmount := uint64(amount * precision)
-	return tbt.ToUint128(intAmount)
+func PriceToUint128(amount float64) tbt.Uint128 {
+	log.Printf("PriceToUint128 input: %v", amount)
+
+	precision := math.Pow10(6)
+	precisionResult := amount * precision
+
+	precisionResult = math.Round(precisionResult)
+	log.Printf("After precision multiplication: %v", precisionResult)
+
+	// Check for potential overflow
+	if precisionResult >= float64(math.MaxUint64) {
+		log.Printf("WARNING: Value will overflow uint64 max (%d)", uint64(math.MaxUint64))
+	}
+
+	intAmount := uint64(precisionResult)
+	log.Printf("After uint64 conversion: %v", intAmount)
+
+	result := tbt.ToUint128(intAmount)
+	log.Printf("Final Uint128 bytes: %v", result)
+
+	return result
 }
 
-func uint128ToFloat(amount tbt.Uint128) float64 {
-	precision := new(big.Float).SetFloat64(math.Pow10(24)) // Fixed precision factor (24 decimal places)
-	intAmount := new(big.Int).SetBytes(amount[:])
-
-	amountBig := new(big.Float).SetInt(intAmount)
-	amountBig.Quo(amountBig, precision)
-
-	result, _ := amountBig.Float64()
-	return result
+func UserData128ToPrice(value tbt.Uint128) float64 {
+	precision := math.Pow10(6)
+	numericValue := float64(binary.LittleEndian.Uint64(value[:8]))
+	return numericValue / precision
 }
 
 func stringToUint128(amount string) (tbt.Uint128, error) {
@@ -69,7 +83,7 @@ func (s *TransferService) CreateSubscribeTransfer(account models.Account, amount
 			Amount:          amount,
 			Code:            uint16(models.TransferCodeSubscribe),
 			Ledger:          localCurrency.LedgerID,
-			UserData128:     floatToUint128(amountPrice),
+			UserData128:     PriceToUint128(amountPrice),
 		},
 	}
 
@@ -102,7 +116,7 @@ func (s *TransferService) CreateRedeemTransfer(account models.Account, amount tb
 			Amount:          amount,
 			Code:            uint16(models.TransferCodeRedeem),
 			Ledger:          localCurrency.LedgerID,
-			UserData128:     floatToUint128(amountPrice),
+			UserData128:     PriceToUint128(amountPrice),
 		},
 	}
 
@@ -138,7 +152,7 @@ func (s *TransferService) CreateDepositTransfer(account models.Account, amount t
 			Amount:          amount,
 			Code:            uint16(models.TransferCodeDeposit),
 			Ledger:          localCurrency.LedgerID,
-			UserData128:     floatToUint128(amountPrice),
+			UserData128:     PriceToUint128(amountPrice),
 		},
 	}
 
@@ -233,7 +247,7 @@ func (s *TransferService) CreateWithdrawalTransfer(account models.Account, amoun
 			CreditAccountID: adminWallet.TbID(),
 			Amount:          amount,
 			Ledger:          localCurrency.LedgerID,
-			UserData128:     floatToUint128(amountPrice),
+			UserData128:     PriceToUint128(amountPrice),
 			Code:            uint16(models.TransferCodeWithdraw),
 		},
 	}
@@ -272,7 +286,7 @@ func (s *TransferService) CreateTransfer(creditAccount models.Account, debitAcco
 			DebitAccountID:  tbt.ToUint128(uint64(debitAccount.ID)),
 			Amount:          amount,
 			Ledger:          uint32(localCurrency.LedgerID),
-			UserData128:     floatToUint128(float64(amountPrice)),
+			UserData128:     PriceToUint128(amountPrice),
 			UserData32:      uint32(models.TransactionTypeWithdraw),
 			Code:            code,
 			Flags:           tbt.TransferFlags{Pending: true}.ToUint16(),
@@ -295,7 +309,40 @@ type AccountTransferWithID struct {
 	Currency  string
 }
 
-func (s *TransferService) GetAllTransfers(accountIds []tbt.Uint128) ([]AccountTransferWithID, error) {
+func (t AccountTransferWithID) MarshalJSON() ([]byte, error) {
+	type TransferResponse struct {
+		ID            string  `json:"id"`
+		Amount        string  `json:"amount"`
+		AmountUSD     float64 `json:"amount_usd"`
+		Currency      string  `json:"currency"`
+		Code          uint16  `json:"code"`
+		Timestamp     int64   `json:"timestamp"`
+		DebitAccount  uint64  `json:"debit_account"`
+		CreditAccount uint64  `json:"credit_account"`
+	}
+
+	id := uuid.UUID(t.ID)
+
+	amountBig := t.Amount.BigInt()
+	amount := amountBig.String()
+	debitAccount := binary.LittleEndian.Uint64(t.DebitAccountID[:8])
+	creditAccount := binary.LittleEndian.Uint64(t.CreditAccountID[:8])
+
+	response := TransferResponse{
+		ID:            id.String(),
+		Amount:        amount,
+		AmountUSD:     t.AmountUSD,
+		Currency:      t.Currency,
+		Code:          uint16(t.Code),
+		Timestamp:     int64(t.Timestamp),
+		DebitAccount:  debitAccount,
+		CreditAccount: creditAccount,
+	}
+
+	return json.Marshal(response)
+}
+
+func (s *TransferService) ListTransfers(accountIds []tbt.Uint128) ([]AccountTransferWithID, error) {
 	var filter = tbt.AccountFilter{
 		AccountID:    tbt.ToUint128(0),
 		TimestampMin: 0,
@@ -316,7 +363,7 @@ func (s *TransferService) GetAllTransfers(accountIds []tbt.Uint128) ([]AccountTr
 		for _, transfer := range transfers {
 			transferWithID := AccountTransferWithID{
 				Transfer:  transfer,
-				AmountUSD: uint128ToFloat(transfer.UserData128),
+				AmountUSD: UserData128ToPrice(transfer.UserData128),
 				Currency:  models.LedgerCurrency[transfer.Ledger],
 			}
 			allTransfers = append(allTransfers, transferWithID)

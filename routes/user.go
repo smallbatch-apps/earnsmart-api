@@ -8,7 +8,7 @@ import (
 
 func RegisterUserRoutes(mux *http.ServeMux, controller *controllers.UserController) {
 
-	mux.HandleFunc("GET /user/me", controller.GetUser)
+	mux.HandleFunc("GET /user", controller.GetUser)
 	mux.HandleFunc("DELETE /user/me", controller.DeleteUser)
 	mux.HandleFunc("PATCH /user/me", controller.UpdateUser)
 

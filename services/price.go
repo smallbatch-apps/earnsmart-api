@@ -27,11 +27,24 @@ func NewPriceService(db *gorm.DB, tbClient tb.Client) *PriceService {
 	}
 }
 
-func (s *PriceService) GetPrices() ([]models.Price, error) {
+func (s *PriceService) ListPrices() ([]models.Price, error) {
 	var prices []models.Price
 	err := s.db.Where("is_current = ?", true).Order("currency ASC").Find(&prices).Error
 
 	return prices, err
+}
+
+func (s *PriceService) ListPriceMap() (map[string]float64, error) {
+	priceMap := make(map[string]float64)
+	prices, err := s.ListPrices()
+	if err != nil {
+		return priceMap, err
+	}
+
+	for _, price := range prices {
+		priceMap[price.Currency] = price.Rate
+	}
+	return priceMap, nil
 }
 
 func (s *PriceService) GetPriceForCurrency(currency string) (models.Price, error) {
@@ -79,7 +92,7 @@ func (s *PriceService) RequestForQuote(fromCurrency string, toCurrency string, a
 	return finalAmount, decimal.Decimal{}, nil
 }
 
-func (s *PriceService) UpdatePrices() error {
+func (s *PriceService) UpdatePrices(period models.CurrencyPeriod) error {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", os.Getenv("COINMARKETCAP_HOST")+"/v1/cryptocurrency/quotes/latest", nil)
 	if err != nil {
@@ -148,11 +161,19 @@ func (s *PriceService) UpdatePrices() error {
 			continue
 		}
 
+		change_24h, ok := usdData["percent_change_24h"].(float64)
+		if !ok {
+			log.Println("Missing or invalid 'price' field")
+			log.Printf("currencyData: %+v\n\n", string(currencyDataJson))
+			continue
+		}
+
 		prices = append(prices, models.Price{
 			Currency:  symbol,
 			IsCurrent: true,
-			Period:    uint(models.CurrencyPeriod1h),
+			Period:    uint(period),
 			Rate:      price,
+			Change24h: change_24h,
 		})
 	}
 
@@ -208,4 +229,13 @@ func (s *PriceService) AmountToFloat(currency string, amount tbt.Uint128) (float
 	shiftedAmountFloat, _ := shiftedAmount.Float64()
 
 	return shiftedAmountFloat, nil
+}
+
+func (s *PriceService) AmountToUSD(currency string, rate float64, amount tbt.Uint128) float64 {
+	amountFloat, err := s.AmountToFloat(currency, amount)
+	if err != nil {
+		return 0
+	}
+
+	return amountFloat * rate
 }

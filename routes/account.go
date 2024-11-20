@@ -7,5 +7,6 @@ import (
 )
 
 func RegisterAccountRoutes(mux *http.ServeMux, controller *controllers.AccountController) {
-	mux.HandleFunc("GET /accounts", controller.ListAccounts)
+	mux.HandleFunc("GET /accounts", controller.ListWalletAccounts)
+	mux.HandleFunc("GET /fund-accounts", controller.ListFundingAccounts)
 }

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -24,8 +25,8 @@ func NewAccountService(db *gorm.DB, tbClient tb.Client) *AccountService {
 
 func (s *AccountService) GetAccounts(searchParams models.Account) ([]models.Account, error) {
 	var accounts = []models.Account{}
-	s.db.Where(&searchParams).Find(&accounts)
-	return accounts, nil
+	err := s.db.Where(searchParams).Find(&accounts).Error
+	return accounts, err
 }
 
 func (s *AccountService) GetOrCreateAccount(accountSearch models.Account) (models.Account, error) {
@@ -33,12 +34,8 @@ func (s *AccountService) GetOrCreateAccount(accountSearch models.Account) (model
 	s.db.Where(accountSearch).First(&account)
 
 	if account.ID == 0 {
-		account_id, err := s.CreateFundAccount(accountSearch.UserID, accountSearch.Currency, accountSearch.AccountCode)
-		if err != nil {
-			return account, err
-		}
-		s.db.Where("account_id = ?", account_id).First(&account)
-		return account, nil
+		account, err := s.CreateFundAccount(accountSearch.UserID, accountSearch.Currency, accountSearch.AccountCode)
+		return account, err
 	}
 	return account, nil
 }
@@ -80,8 +77,6 @@ func (s *AccountService) CreateFundAccount(userID uint64, currency string, code 
 		Flags:      flags.ToUint16(),
 	})
 
-	// utils.LogAccount(accounts[0])
-
 	result, err := s.tbClient.CreateAccounts(accounts)
 
 	if err != nil {
@@ -114,7 +109,7 @@ type AccountBalanceWithID struct {
 	AccountID tbt.Uint128
 }
 
-func (s *AccountService) LookupAccountBalances(accountIds []tbt.Uint128) ([]AccountBalanceWithID, error) {
+func (s *AccountService) GetAccountBalanceHistory(accountIds []tbt.Uint128) ([]AccountBalanceWithID, error) {
 
 	var balances = []AccountBalanceWithID{}
 
@@ -157,13 +152,142 @@ func (s *AccountService) LookupAccountBalances(accountIds []tbt.Uint128) ([]Acco
 	return balances, nil
 }
 
+type AccountWithBalance struct {
+	tbt.Account
+	Currency          string
+	Balance           tbt.Uint128
+	BalanceUSD        float64
+	BalancePending    tbt.Uint128
+	BalancePendingUSD float64
+}
+
+func (a AccountWithBalance) MarshalJSON() ([]byte, error) {
+	type AccountResponse struct {
+		ID                string  `json:"id"`
+		Ledger            uint32  `json:"ledger"`
+		Currency          string  `json:"currency"`
+		Code              uint16  `json:"code"`
+		Timestamp         uint64  `json:"timestamp"`
+		Balance           string  `json:"balance"`
+		BalanceUSD        float64 `json:"balance_usd"`
+		BalancePending    string  `json:"balance_pending"`
+		BalancePendingUSD float64 `json:"balance_pending_usd"`
+	}
+	balanceBig := a.Balance.BigInt()
+	balance := balanceBig.String()
+
+	balancePendingBig := a.BalancePending.BigInt()
+	balancePending := balancePendingBig.String()
+
+	response := AccountResponse{
+		ID:                a.ID.String(),
+		Ledger:            a.Ledger,
+		Currency:          a.Currency,
+		Code:              a.Code,
+		Timestamp:         a.Timestamp,
+		Balance:           balance,
+		BalanceUSD:        a.BalanceUSD,
+		BalancePending:    balancePending,
+		BalancePendingUSD: a.BalancePendingUSD,
+	}
+
+	return json.Marshal(response)
+}
+
+func (s *AccountService) LookupAccounts(accountIds []tbt.Uint128) ([]AccountWithBalance, error) {
+	priceService := NewPriceService(s.db, s.tbClient)
+
+	var balances = []AccountWithBalance{}
+
+	prices, err := priceService.ListPriceMap()
+	if err != nil {
+		return balances, err
+	}
+
+	accounts, err := s.tbClient.LookupAccounts(accountIds)
+	if err != nil {
+		return balances, err
+	}
+
+	for _, account := range accounts {
+		currency := models.LedgerCurrency[account.Ledger]
+		rate := prices[currency]
+		accountWithBalance := s.GetBalancesForAccount(account, rate)
+		balances = append(balances, accountWithBalance)
+	}
+
+	return balances, nil
+}
+
+func (s *AccountService) GetBalancesForAccount(account tbt.Account, rate float64) AccountWithBalance {
+	priceService := NewPriceService(s.db, s.tbClient)
+	currency := models.LedgerCurrency[account.Ledger]
+	credits := account.CreditsPosted.BigInt()
+	debits := account.DebitsPosted.BigInt()
+	balance := new(big.Int).Sub(&credits, &debits)
+	balanceUint128 := tbt.BigIntToUint128(*balance)
+	balanceUSD := priceService.AmountToUSD(currency, rate, balanceUint128)
+
+	creditsPending := account.CreditsPending.BigInt()
+	debitsPending := account.DebitsPending.BigInt()
+	balancePending := new(big.Int).Sub(&creditsPending, &debitsPending)
+	balancePendingUint128 := tbt.BigIntToUint128(*balancePending)
+	balancePendingUSD := priceService.AmountToUSD(currency, rate, balancePendingUint128)
+
+	accountWithBalance := AccountWithBalance{
+		Currency:          currency,
+		Account:           account,
+		Balance:           balanceUint128,
+		BalanceUSD:        balanceUSD,
+		BalancePending:    balancePendingUint128,
+		BalancePendingUSD: balancePendingUSD,
+	}
+
+	return accountWithBalance
+}
+
+func (s *AccountService) CombineAccountBalances(accounts []AccountWithBalance) []AccountWithBalance {
+	ledgerBalances := make(map[uint32]AccountWithBalance)
+
+	for _, account := range accounts {
+		if combined, exists := ledgerBalances[account.Ledger]; exists {
+			credits := account.Balance.BigInt()
+			existingCredits := combined.Balance.BigInt()
+			totalBalance := new(big.Int).Add(&credits, &existingCredits)
+
+			pendingCredits := account.BalancePending.BigInt()
+			existingPending := combined.BalancePending.BigInt()
+			totalPending := new(big.Int).Add(&pendingCredits, &existingPending)
+
+			totalBalanceUSD := combined.BalanceUSD + account.BalanceUSD
+			totalPendingUSD := combined.BalancePendingUSD + account.BalancePendingUSD
+
+			combined.Balance = tbt.BigIntToUint128(*totalBalance)
+			combined.BalancePending = tbt.BigIntToUint128(*totalPending)
+			combined.BalanceUSD = totalBalanceUSD
+			combined.BalancePendingUSD = totalPendingUSD
+
+			ledgerBalances[account.Ledger] = combined
+		} else {
+			ledgerBalances[account.Ledger] = account
+		}
+	}
+
+	var result []AccountWithBalance
+	for _, account := range ledgerBalances {
+		result = append(result, account)
+	}
+
+	return result
+}
+
 func (s *AccountService) AccountHasSufficientBalance(account models.Account, amount tbt.Uint128) bool {
 	accountIds, err := s.ExtractIDs([]models.Account{account})
 	if err != nil {
 		return false
 	}
 
-	accountBalances, err := s.LookupAccountBalances(accountIds)
+	accountBalances, err := s.GetAccountBalanceHistory(accountIds)
 
 	if err != nil {
 		return false

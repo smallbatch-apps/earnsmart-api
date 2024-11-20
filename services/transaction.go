@@ -5,6 +5,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/smallbatch-apps/earnsmart-api/models"
+	"github.com/smallbatch-apps/earnsmart-api/utils"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
 	tbt "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 	"gorm.io/gorm"
@@ -55,7 +56,8 @@ func (s *TransactionService) CreateSubscription(userID uint64, amount string, cu
 	if err != nil {
 		return models.Transaction{}, nil
 	}
-	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Create new fund subscription for %s%s", amountDecimal, currency), userID)
+	formattedAmount := utils.FormatCurrencyAmount(amountDecimal, models.AllCurrencies[currency].Decimals)
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Create new fund subscription for %s %s", formattedAmount, currency), userID)
 	return transaction, err
 }
 
@@ -94,7 +96,8 @@ func (s *TransactionService) CreateRedemption(userID uint64, amount string, curr
 	if err != nil {
 		return models.Transaction{}, nil
 	}
-	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Redeem %s%s from fund", amountDecimal, currency), userID)
+	formattedAmount := utils.FormatCurrencyAmount(amountDecimal, models.AllCurrencies[currency].Decimals)
+	s.LogActivity(models.ActivityTypeAdmin, fmt.Sprintf("Redeem %s %s from fund", formattedAmount, currency), userID)
 	return transaction, nil
 }
 
@@ -141,7 +144,7 @@ func (s *TransactionService) CreatePendingDeposit(userID uint64, amount string, 
 		return models.Transaction{}, err
 	}
 
-	s.LogActivity(models.ActivityTypeUser, fmt.Sprintf("Create pending deposit: %f%s", amountFloat, currency), userID)
+	s.LogActivity(models.ActivityTypeUser, fmt.Sprintf("Create pending deposit: %f %s", amountFloat, currency), userID)
 	return transaction, nil
 }
 

@@ -2,7 +2,7 @@ package schema
 
 import (
 	"encoding/json"
-	"math/big"
+	"log"
 
 	"github.com/smallbatch-apps/earnsmart-api/models"
 	"github.com/smallbatch-apps/earnsmart-api/services"
@@ -11,8 +11,8 @@ import (
 
 type AccountWithBalance struct {
 	models.Account
-	Balance    tbt.Uint128 `json:"balance"`
-	BalanceUSD float64     `json:"balance_usd"`
+	Balance    string  `json:"balance"`
+	BalanceUSD float64 `json:"balance_usd"`
 }
 
 func (a AccountWithBalance) MarshalJSON() ([]byte, error) {
@@ -27,22 +27,32 @@ func (a AccountWithBalance) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(accountJSON, &accountMap); err != nil {
 		return nil, err
 	}
-
+	log.Printf("Balance before: %v (type: %T)", a.Balance, a.Balance)
 	// Add the additional fields
-	accountMap["balance"] = bigIntToUint64(a.Balance.BigInt())
+	accountMap["balance"] = a.Balance
 	accountMap["balance_usd"] = a.BalanceUSD
 
-	return json.Marshal(accountMap)
+	final, err := json.Marshal(accountMap)
+	log.Printf("Final JSON: %s", string(final))
+	return final, err
 }
 
 // bigIntToUint64 converts a big.Int to uint64
-func bigIntToUint64(bi big.Int) uint64 {
-	return (&bi).Uint64()
-}
+// func bigIntToUint64(bi big.Int) uint64 {
+// 	return (&bi).Uint64()
+// }
 
 type SettingPayload struct {
-	Setting string `json:"setting"`
-	Value   string `json:"value"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type SwapPayload struct {
+	FromCurrency string  `json:"from_currency"`
+	ToCurrency   string  `json:"to_currency"`
+	FromAmount   string  `json:"from_amount"`
+	ToAmount     string  `json:"to_amount"`
+	Rate         float64 `json:"rate"`
 }
 
 type TransactionPayload struct {
